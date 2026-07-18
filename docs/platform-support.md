@@ -1,6 +1,7 @@
 # Platform support contract
 
-QuotaDeck's supported platforms are Windows, macOS, and mainstream desktop Linux.
+QuotaDeck's supported platforms are Windows 10/11 x64, macOS 12 or newer on Intel
+and Apple silicon, and mainstream x64 desktop Linux.
 Support means the application can discover official CLIs, isolate managed account
 homes, collect provider-supported quota, launch an interactive terminal, keep a
 reachable desktop lifecycle, and produce a native artifact.
@@ -47,21 +48,32 @@ to its child environment without changing the machine:
 - Linux: `~/.local/bin`, `~/.local/share/pnpm`, `~/.bun/bin`, `/usr/local/bin`,
   and `/usr/bin`.
 
-If a CLI is elsewhere, launch QuotaDeck from a shell containing that path until a
-future settings screen supports custom executable locations.
+If a CLI is elsewhere, open **CLI settings** and choose the official executable.
+QuotaDeck validates it with `--version` and currently accepts Claude Code
+`>=2.1.0 <3.0.0` and Codex `>=0.139.0 <1.0.0`. It stores the absolute location
+locally and sends only availability, source, and a normalized semantic version
+to the UI; unrecognized provider output is never displayed. Resetting the choice
+returns discovery to the application PATH. These adapter ranges must be reviewed
+when either provider ships a new major version.
 
 ## Native verification policy
 
 Pure tests validate platform descriptors, quoting, terminal candidate arguments,
-profile environment isolation, and collector privacy on every CI runner. Each
-pull request also typechecks, tests, and builds on all three native operating
-systems.
+profile environment isolation, and collector privacy on every CI runner. A
+behavioral shell-boundary test also executes metacharacter-heavy generated
+commands through PowerShell/cmd on Windows and `/bin/sh` on macOS/Linux. Each pull
+request typechecks, tests, and builds on all three native operating systems.
 
 An artifact is release-supported only after its native packaging job succeeds.
 Windows Authenticode and macOS Developer ID/notarization are mandatory before the
-automated workflow may publish a GitHub release. Linux artifacts are checksummed
-by GitHub Releases; repository package signing is a future distribution-channel
-decision.
+automated workflow may publish a GitHub release. The workflow fails closed if a
+signing identity is absent and validates native signatures after packaging.
+Linux artifacts are checksummed by GitHub Releases; repository package signing
+is a future distribution-channel decision.
+
+Unsigned macOS workflow artifacts are explicitly inspection-only: signing,
+hardened runtime, and notarization are all disabled together. They are useful for
+native smoke testing but are not safe to present as a community release.
 
 ## Known desktop variation
 

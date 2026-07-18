@@ -3,6 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { CLAUDE_QUOTA_SNAPSHOT_FILE } from "../providers/claude-statusline";
 import type { ProviderProfile } from "./profile-store";
+import {
+  encodePowerShellCommand,
+  quotePosix,
+  quotePowerShellLiteral,
+} from "./shell-quoting";
 
 export interface ClaudeStatusLineCommandOptions {
   collectorPath: string;
@@ -18,24 +23,15 @@ export interface PrepareClaudeStatusLineOptions {
   homeDirectory?: string;
 }
 
-function quotePosix(value: string): string {
-  return `'${value.replaceAll("'", `'"'"'`)}'`;
-}
-
-function quoteWindowsCommandArgument(value: string): string {
-  return `"${value.replaceAll('"', '""')}"`;
-}
-
 export function buildClaudeStatusLineCommand(
   options: ClaudeStatusLineCommandOptions,
 ): string {
   if (options.platform === "win32") {
-    return [
-      'set "ELECTRON_RUN_AS_NODE=1" &&',
-      quoteWindowsCommandArgument(options.runtimePath),
-      quoteWindowsCommandArgument(options.collectorPath),
-      quoteWindowsCommandArgument(options.snapshotPath),
-    ].join(" ");
+    const script = [
+      "$env:ELECTRON_RUN_AS_NODE = '1'",
+      `& ${quotePowerShellLiteral(options.runtimePath)} ${quotePowerShellLiteral(options.collectorPath)} ${quotePowerShellLiteral(options.snapshotPath)}`,
+    ].join("; ");
+    return `powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand ${encodePowerShellCommand(script)}`;
   }
 
   return [

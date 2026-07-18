@@ -2,9 +2,16 @@ import {
   PROVIDER_BILLING_OVERRIDES,
   PROVIDER_CONFIG_VARIABLE,
 } from "./provider-environment-policy";
+import type { ProviderId } from "../../shared/contracts";
+import {
+  escapeAppleScriptString,
+  quotePosix,
+  quotePowerShellLiteral,
+} from "./shell-quoting";
 
 export interface TerminalProfileSpec {
-  executable: "claude" | "codex";
+  provider: ProviderId;
+  executable: string;
   args: string[];
   environment: NodeJS.ProcessEnv;
   title: string;
@@ -18,26 +25,14 @@ export interface TerminalLaunchCandidate {
   waitForExit?: boolean;
 }
 
-function quotePosix(value: string): string {
-  return `'${value.replaceAll("'", `'"'"'`)}'`;
-}
-
-function quotePowerShellLiteral(value: string): string {
-  return `'${value.replaceAll("'", "''")}'`;
-}
-
-function escapeAppleScriptString(value: string): string {
-  return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
-}
-
-function buildPosixProfileCommand(
+export function buildPosixProfileCommand(
   spec: TerminalProfileSpec,
   homeDirectory: string,
 ): string {
-  const profileVariable = PROVIDER_CONFIG_VARIABLE[spec.executable];
+  const profileVariable = PROVIDER_CONFIG_VARIABLE[spec.provider];
   const profileRoot = spec.environment[profileVariable];
   const variablesToUnset = profileRoot
-    ? PROVIDER_BILLING_OVERRIDES[spec.executable]
+    ? PROVIDER_BILLING_OVERRIDES[spec.provider]
     : [];
   const environmentArguments = variablesToUnset.flatMap((variable) => [
     "-u",

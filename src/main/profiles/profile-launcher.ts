@@ -23,7 +23,9 @@ export { createTerminalLaunchCandidates } from "./terminal-launcher";
 
 export type ProfileAction = "login" | "work";
 export type ProfileLaunchSpec = TerminalProfileSpec;
-export type ProfileLauncherOptions = PrepareClaudeStatusLineOptions;
+export interface ProfileLauncherOptions extends PrepareClaudeStatusLineOptions {
+  command?: string;
+}
 const execFileAsync = promisify(execFile);
 
 export function createProfileLaunchSpec(
@@ -31,8 +33,10 @@ export function createProfileLaunchSpec(
   action: ProfileAction,
   baseEnvironment: NodeJS.ProcessEnv = process.env,
   claudeSettingsPath?: string | null,
+  command?: string,
 ): ProfileLaunchSpec {
-  const executable = profile.provider === "claude" ? "claude" : "codex";
+  const executable =
+    command ?? (profile.provider === "claude" ? "claude" : "codex");
   const args =
     action === "work"
       ? profile.provider === "claude" && claudeSettingsPath
@@ -48,6 +52,7 @@ export function createProfileLaunchSpec(
   );
 
   return {
+    provider: profile.provider,
     executable,
     args,
     environment,
@@ -117,6 +122,7 @@ export async function launchProfile(
     action,
     process.env,
     statusLine.settingsPath,
+    options.command,
   );
   try {
     await execFileAsync(spec.executable, ["--version"], {

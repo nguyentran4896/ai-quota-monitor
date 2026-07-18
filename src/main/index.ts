@@ -1,25 +1,25 @@
 import {
   app,
   BrowserWindow,
-  dialog,
-  ipcMain,
   type IpcMainInvokeEvent,
   Menu,
   nativeImage,
-  shell,
+  Notification,
   Tray,
 } from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import type { AddProfileInput } from "../shared/contracts";
+import { registerIpcHandlers } from "./ipc/register-ipc-handlers";
 import {
   isTrustedRendererUrl,
   selectDevelopmentRendererUrl,
 } from "./navigation-policy";
-import { launchProfile } from "./profiles/profile-launcher";
 import { ProfileStore } from "./profiles/profile-store";
-import { createAsyncRequestCoalescer } from "./services/concurrency";
-import { collectDashboard } from "./services/dashboard";
+import { CodexMonitorManager } from "./providers/codex-app-server";
+import { QuotaAlertService } from "./services/quota-alert-service";
+import { AlertSettingsStore } from "./settings/alert-settings-store";
+import { CliSettingsStore } from "./settings/cli-settings-store";
+import { IdentityKeyStore } from "./settings/identity-key-store";
 
 const rendererFilePath = path.join(__dirname, "../dist/index.html");
 const rendererFileUrl = pathToFileURL(rendererFilePath).href;
@@ -30,6 +30,7 @@ const developmentServerUrl = selectDevelopmentRendererUrl(
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
+let codexMonitor: CodexMonitorManager | null = null;
 
 function resourcePath(fileName: string, developmentPath: string): string {
   return app.isPackaged
@@ -104,10 +105,15 @@ function assertTrustedIpcSender(event: IpcMainInvokeEvent): void {
   }
 }
 
-function showMainWindow(): void {
+function getMainWindow(): BrowserWindow {
   if (!mainWindow || mainWindow.isDestroyed()) mainWindow = createWindow();
-  mainWindow.show();
-  mainWindow.focus();
+  return mainWindow;
+}
+
+function showMainWindow(): void {
+  const window = getMainWindow();
+  window.show();
+  window.focus();
 }
 
 function configureApplicationMenu(): void {
@@ -171,118 +177,50 @@ if (!hasSingleInstanceLock) {
   app.on("second-instance", () => {
     if (app.isReady()) showMainWindow();
   });
-  app.whenReady().then(() => {
-    if (process.platform === "win32")
+  app.whenReady().then(async () => {
+    if (process.platform === "win32") {
       app.setAppUserModelId("io.github.nguyentran4896.quotadeck");
+    }
     configureApplicationMenu();
+
     const profileStore = new ProfileStore(
       app.getPath("userData"),
       process.platform,
     );
-    const claudeStatusLineCollectorPath = resourcePath(
-      "claude-statusline.cjs",
-      path.join("resources", "claude-statusline.cjs"),
-    );
-    const evidencePath = resourcePath(
-      "provider-research.md",
-      path.join("docs", "research", "provider-quota-and-auth.md"),
-    );
-    const dashboardRequests = createAsyncRequestCoalescer(() =>
-      collectDashboard(profileStore),
-    );
-    const getDashboard = () => dashboardRequests.run();
-    ipcMain.handle("dashboard:get", (event) => {
-      assertTrustedIpcSender(event);
-      return getDashboard();
+    const cliSettingsStore = new CliSettingsStore(app.getPath("userData"));
+    const alertSettingsStore = new AlertSettingsStore(app.getPath("userData"));
+    const quotaAlertService = new QuotaAlertService(({ title, body }) => {
+      if (Notification.isSupported()) new Notification({ title, body }).show();
     });
-    ipcMain.handle("dashboard:refresh", (event) => {
-      assertTrustedIpcSender(event);
-      return getDashboard();
-    });
-    ipcMain.handle("profiles:add", async (event, input: AddProfileInput) => {
-      assertTrustedIpcSender(event);
-      await profileStore.create(input);
-      dashboardRequests.invalidate();
-      return getDashboard();
-    });
-    ipcMain.handle("profiles:remove", async (event, profileId: string) => {
-      assertTrustedIpcSender(event);
-      const profile = await profileStore.get(profileId);
-      if (!profile)
-        return { ok: false, message: "Account profile was not found." };
-      if (!profile.isManaged) {
-        return {
-          ok: false,
-          message: "Current provider profiles cannot be removed.",
-        };
-      }
+    const identityKey = await new IdentityKeyStore(
+      app.getPath("userData"),
+    ).getKey();
+    const activeCodexMonitor = new CodexMonitorManager();
+    codexMonitor = activeCodexMonitor;
 
-      const confirmation = await dialog.showMessageBox(mainWindow!, {
-        type: "warning",
-        title: "Remove account profile?",
-        message: `Remove ${profile.displayName} from QuotaDeck?`,
-        detail:
-          "The isolated provider home, including its provider-managed login and local sessions, will be moved to the system Trash or Recycle Bin.",
-        buttons: ["Cancel", "Move profile to Trash"],
-        defaultId: 0,
-        cancelId: 0,
-        noLink: true,
-      });
-      if (confirmation.response !== 1) {
-        return { ok: false, message: "Profile removal was cancelled." };
-      }
+    registerIpcHandlers({
+      profileStore,
+      cliSettingsStore,
+      alertSettingsStore,
+      quotaAlertService,
+      codexMonitor: activeCodexMonitor,
+      claudeStatusLineCollectorPath: resourcePath(
+        "claude-statusline.cjs",
+        path.join("resources", "claude-statusline.cjs"),
+      ),
+      evidencePath: resourcePath(
+        "provider-research.md",
+        path.join("docs", "research", "provider-quota-and-auth.md"),
+      ),
+      runtimePath: process.execPath,
+      platform: process.platform,
+      identityKey,
+      getMainWindow,
+      assertTrustedSender: assertTrustedIpcSender,
+    });
 
-      const removed = await profileStore.remove(profileId);
-      dashboardRequests.invalidate();
-      try {
-        await shell.trashItem(removed.profileDirectory);
-        return {
-          ok: true,
-          message: `${removed.profile.displayName} was moved to the system Trash or Recycle Bin.`,
-        };
-      } catch {
-        return {
-          ok: true,
-          message: `${removed.profile.displayName} was removed from QuotaDeck, but its app-owned directory could not be moved to Trash.`,
-        };
-      }
-    });
-    ipcMain.handle("profiles:login", async (event, profileId: string) => {
-      assertTrustedIpcSender(event);
-      const profile = await profileStore.get(profileId);
-      if (!profile)
-        return { ok: false, message: "Account profile was not found." };
-      return launchProfile(profile, "login", {
-        collectorPath: claudeStatusLineCollectorPath,
-        runtimePath: process.execPath,
-      });
-    });
-    ipcMain.handle("profiles:launch", async (event, profileId: string) => {
-      assertTrustedIpcSender(event);
-      const profile = await profileStore.get(profileId);
-      if (!profile)
-        return { ok: false, message: "Account profile was not found." };
-      return launchProfile(profile, "work", {
-        collectorPath: claudeStatusLineCollectorPath,
-        runtimePath: process.execPath,
-      });
-    });
-    ipcMain.handle("evidence:open", async (event) => {
-      assertTrustedIpcSender(event);
-      const error = await shell.openPath(evidencePath);
-      return error
-        ? {
-            ok: false,
-            message: `The research report could not be opened: ${error}`,
-          }
-        : {
-            ok: true,
-            message: "Provider research opened in your default Markdown app.",
-          };
-    });
     mainWindow = createWindow();
     createTray();
-
     app.on("activate", showMainWindow);
   });
 }
@@ -293,4 +231,5 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   isQuitting = true;
+  codexMonitor?.stopAll();
 });

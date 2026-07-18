@@ -17,6 +17,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AccountSnapshot,
+  AlertThreshold,
   DashboardSnapshot,
   ProviderCapabilities,
   ProviderId,
@@ -53,11 +54,17 @@ function resetLabel(value: string | null): string {
   if (!value) return "Reset time unavailable";
   const date = new Date(value);
   const delta = date.getTime() - Date.now();
-  if (delta <= 0) return "Reset pending";
+  if (delta <= 0) return "Awaiting refresh";
   const hours = Math.floor(delta / 3_600_000);
   const days = Math.floor(hours / 24);
-  if (days > 0) return `Resets in ${days}d ${hours % 24}h`;
-  return `Resets in ${hours}h`;
+  const absolute = date.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  if (days > 0) return `Resets in ${days}d ${hours % 24}h · ${absolute}`;
+  return `Resets in ${hours}h · ${absolute}`;
 }
 
 function availablePercent(account: AccountSnapshot): number | null {
@@ -69,16 +76,101 @@ function availablePercent(account: AccountSnapshot): number | null {
   );
 }
 
-function recommendedAccount(
+function recommendedAccountForProvider(
   accounts: AccountSnapshot[],
+  provider: ProviderId,
 ): AccountSnapshot | undefined {
-  return [...accounts].sort((left, right) => {
-    const leftAvailable =
-      availablePercent(left) ?? (left.state === "ready" ? -1 : -2);
-    const rightAvailable =
-      availablePercent(right) ?? (right.state === "ready" ? -1 : -2);
-    return rightAvailable - leftAvailable;
-  })[0];
+  return accounts
+    .filter(
+      (account) =>
+        account.provider === provider &&
+        account.billingMode === "subscription" &&
+        account.quotaStatus === "fresh" &&
+        availablePercent(account) !== null,
+    )
+    .sort(
+      (left, right) =>
+        (availablePercent(right) ?? -1) - (availablePercent(left) ?? -1),
+    )[0];
+}
+
+const quotaStatusLabels = {
+  fresh: "Fresh",
+  stale: "Stale",
+  partial: "Partial",
+  "needs-first-response": "Needs first response",
+  "awaiting-refresh": "Awaiting refresh",
+  "signed-out": "Signed out",
+  unavailable: "Unavailable",
+} as const;
+
+const billingModeLabels = {
+  subscription: "Subscription",
+  api: "API billing",
+  external: "External billing",
+  unknown: "Billing unknown",
+} as const;
+
+const authModeLabels = {
+  subscription: "Subscription login",
+  "api-key": "API key login",
+  "external-provider": "External provider",
+  unknown: "Auth unknown",
+  "signed-out": "Signed out",
+} as const;
+
+function useModalDialog(onClose: () => void) {
+  const dialogRef = useRef<HTMLElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null,
+  );
+
+  useEffect(() => {
+    const focusableSelector =
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(focusableSelector),
+      );
+      if (!focusable.length) {
+        event.preventDefault();
+        dialogRef.current.focus();
+        return;
+      }
+      const first = focusable[0]!;
+      const last = focusable.at(-1)!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    queueMicrotask(() => {
+      if (!dialogRef.current?.contains(document.activeElement)) {
+        dialogRef.current
+          ?.querySelector<HTMLElement>(focusableSelector)
+          ?.focus();
+      }
+    });
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      previouslyFocusedRef.current?.focus();
+    };
+  }, [onClose]);
+
+  return dialogRef;
 }
 
 function QuotaMeter({ window }: { window: QuotaWindow }) {
@@ -113,14 +205,19 @@ function QuotaMeter({ window }: { window: QuotaWindow }) {
 function AccountCard({
   account,
   onRemove,
+  onVerifyUsage,
 }: {
   account: AccountSnapshot;
   onRemove: (account: AccountSnapshot) => Promise<void>;
+  onVerifyUsage: (provider: ProviderId) => Promise<void>;
 }) {
   const meta = providerMeta[account.provider];
 
   return (
-    <article className={`account-card accent-${meta.accent}`}>
+    <article
+      className={`account-card accent-${meta.accent}`}
+      aria-label={`${account.displayName} account`}
+    >
       <div className="account-card-top">
         <div className="provider-identity">
           <span className="provider-mark">{meta.mark}</span>
@@ -145,13 +242,35 @@ function AccountCard({
       </div>
 
       <div className="account-meta-row">
-        <span className={`status-pill status-${account.state}`}>
+        <span className={`status-pill status-${account.quotaStatus}`}>
           <i />{" "}
-          {account.state === "ready"
-            ? "Ready"
-            : account.state.replace("-", " ")}
+          {account.state === "limited"
+            ? "Limited"
+            : quotaStatusLabels[account.quotaStatus]}
         </span>
         <span className="plan-pill">{titleCase(account.plan)}</span>
+      </div>
+
+      <div className="account-safety-row">
+        <span>
+          <strong>Identity</strong> {account.identity ?? "Not reported"}
+          {account.isManaged && (
+            <small
+              className={account.identityVerified ? "verified" : "pending"}
+            >
+              {account.identityVerified ? " Verified" : " Verify before launch"}
+            </small>
+          )}
+        </span>
+        <span className="account-mode-pills">
+          <span className="auth-pill">{authModeLabels[account.authMode]}</span>
+          <span className={`billing-pill billing-${account.billingMode}`}>
+            {billingModeLabels[account.billingMode]}
+          </span>
+        </span>
+      </div>
+      <div className="profile-scope">
+        Workspace: {account.isManaged ? "Isolated profile" : "Current CLI home"}
       </div>
 
       {account.quotaWindows.length ? (
@@ -175,11 +294,23 @@ function AccountCard({
         </div>
       )}
 
+      {account.notice && <p className="account-notice">{account.notice}</p>}
+
       <div className="source-row">
         <span>
           <ShieldCheck size={14} /> {account.source.label}
+          <small>· {relativeTime(account.source.observedAt)}</small>
         </span>
-        <span>{relativeTime(account.source.observedAt)}</span>
+        <button
+          type="button"
+          className="usage-help-button"
+          onClick={() => void onVerifyUsage(account.provider)}
+          aria-label={`Open official ${meta.label} usage instructions`}
+        >
+          {account.provider === "claude"
+            ? "Verify with /usage"
+            : "Verify in Settings → Usage"}
+        </button>
       </div>
     </article>
   );
@@ -196,16 +327,12 @@ function SmartSwitcher({
   actionMessage: string | null;
   shortcutModifier: "Ctrl" | "⌘";
 }) {
-  const [selected, setSelected] = useState(
-    recommendedAccount(accounts)?.id ?? "",
-  );
+  const [selected, setSelected] = useState(accounts[0]?.id ?? "");
   const [isLaunching, setIsLaunching] = useState(false);
-  const firstOptionRef = useRef<HTMLButtonElement>(null);
-  const selectedAccount =
-    accounts.find((account) => account.id === selected) ?? accounts[0];
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const selectedAccount = accounts.find((account) => account.id === selected);
   const needsSetup =
-    selectedAccount?.isManaged &&
-    ["unknown", "signed-out"].includes(selectedAccount.state);
+    selectedAccount?.isManaged && selectedAccount.authMode === "signed-out";
 
   const handleAction = async () => {
     if (!selectedAccount) return;
@@ -223,7 +350,7 @@ function SmartSwitcher({
         shortcutModifier === "⌘" ? event.metaKey : event.ctrlKey;
       if (modifierPressed && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        firstOptionRef.current?.focus();
+        optionRefs.current[0]?.focus();
       }
     };
     window.addEventListener("keydown", handleShortcut);
@@ -240,12 +367,12 @@ function SmartSwitcher({
         <span className="shortcut">{shortcutModifier} K</span>
       </div>
       <p className="panel-intro">
-        Choose the account with the most runway before starting your next
-        session.
+        Choose an account, verify its identity and billing mode, then launch a
+        separate session.
       </p>
 
       <div className="switcher-list" role="listbox" aria-label="AI accounts">
-        {accounts.map((account) => {
+        {accounts.map((account, index) => {
           const meta = providerMeta[account.provider];
           const remaining = availablePercent(account);
           const available =
@@ -257,8 +384,24 @@ function SmartSwitcher({
             <button
               className={`switcher-item ${isSelected ? "selected" : ""}`}
               key={account.id}
-              ref={account === accounts[0] ? firstOptionRef : undefined}
+              ref={(element) => {
+                optionRefs.current[index] = element;
+              }}
               onClick={() => setSelected(account.id)}
+              onKeyDown={(event) => {
+                let nextIndex: number | null = null;
+                if (event.key === "ArrowDown")
+                  nextIndex = (index + 1) % accounts.length;
+                if (event.key === "ArrowUp")
+                  nextIndex = (index - 1 + accounts.length) % accounts.length;
+                if (event.key === "Home") nextIndex = 0;
+                if (event.key === "End") nextIndex = accounts.length - 1;
+                if (nextIndex === null) return;
+                event.preventDefault();
+                const nextAccount = accounts[nextIndex];
+                if (nextAccount) setSelected(nextAccount.id);
+                optionRefs.current[nextIndex]?.focus();
+              }}
               role="option"
               aria-selected={isSelected}
             >
@@ -268,7 +411,8 @@ function SmartSwitcher({
               <span className="switcher-copy">
                 <strong>{account.displayName}</strong>
                 <small>
-                  {titleCase(account.plan)} · {available}
+                  {account.identity ?? "Identity unknown"} ·{" "}
+                  {billingModeLabels[account.billingMode]} · {available}
                 </small>
               </span>
               {isSelected && (
@@ -293,7 +437,11 @@ function SmartSwitcher({
             : `Launch ${selectedAccount ? providerMeta[selectedAccount.provider].label : "account"}`}
         <ArrowRight size={17} />
       </button>
-      {actionMessage && <p className="action-message">{actionMessage}</p>}
+      {actionMessage && (
+        <p className="action-message" role="status">
+          {actionMessage}
+        </p>
+      )}
       <p className="safety-note">
         <ShieldCheck size={14} /> Launching starts a separate profile process.
         QuotaDeck never copies raw tokens.
@@ -311,6 +459,7 @@ function AddProfileDialog({
   onAdded: (dashboard: DashboardSnapshot) => void;
   capabilities: ProviderCapabilities;
 }) {
+  const dialogRef = useModalDialog(onClose);
   const [provider, setProvider] = useState<ProviderId>(() =>
     capabilities.claude.managedProfiles ? "claude" : "codex",
   );
@@ -352,6 +501,7 @@ function AddProfileDialog({
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
       <section
+        ref={dialogRef}
         className="profile-dialog"
         role="dialog"
         aria-modal="true"
@@ -368,31 +518,36 @@ function AddProfileDialog({
           </button>
         </div>
         <p>
-          QuotaDeck creates a separate provider home. You will sign in through
-          the provider's official flow; credentials stay provider-owned.
+          QuotaDeck creates a pending login workspace. You will sign in through
+          the provider's official flow; credentials stay provider-owned. The
+          workspace becomes a verified account only after you confirm its masked
+          identity before first launch.
         </p>
         <form onSubmit={(event) => void submit(event)}>
-          <label>Provider</label>
-          <div className="provider-choice">
-            {(["claude", "codex"] as const).map((value) => (
-              <button
-                type="button"
-                key={value}
-                className={provider === value ? "selected" : ""}
-                onClick={() => setProvider(value)}
-                disabled={!capabilities[value].managedProfiles}
-                title={capabilities[value].reason ?? undefined}
-              >
-                <span
-                  className={`provider-mark small accent-${providerMeta[value].accent}`}
+          <fieldset className="provider-fieldset">
+            <legend>Provider</legend>
+            <div className="provider-choice">
+              {(["claude", "codex"] as const).map((value) => (
+                <button
+                  type="button"
+                  key={value}
+                  className={provider === value ? "selected" : ""}
+                  onClick={() => setProvider(value)}
+                  disabled={!capabilities[value].managedProfiles}
+                  title={capabilities[value].reason ?? undefined}
+                  aria-pressed={provider === value}
                 >
-                  {providerMeta[value].mark}
-                </span>
-                {providerMeta[value].label}
-                {provider === value && <Check size={14} />}
-              </button>
-            ))}
-          </div>
+                  <span
+                    className={`provider-mark small accent-${providerMeta[value].accent}`}
+                  >
+                    {providerMeta[value].mark}
+                  </span>
+                  {providerMeta[value].label}
+                  {provider === value && <Check size={14} />}
+                </button>
+              ))}
+            </div>
+          </fieldset>
           {!capabilities.claude.managedProfiles && (
             <div className="form-notice">{capabilities.claude.reason}</div>
           )}
@@ -405,7 +560,11 @@ function AddProfileDialog({
             autoFocus
             maxLength={48}
           />
-          {error && <div className="form-error">{error}</div>}
+          {error && (
+            <div className="form-error" role="alert">
+              {error}
+            </div>
+          )}
           <div className="dialog-actions">
             <button
               type="button"
@@ -419,11 +578,176 @@ function AddProfileDialog({
               className="primary-action"
               disabled={isSaving || displayName.trim().length < 2}
             >
-              {isSaving ? "Creating…" : "Create profile"}{" "}
+              {isSaving ? "Creating…" : "Create login workspace"}{" "}
               <ArrowRight size={16} />
             </button>
           </div>
         </form>
+      </section>
+    </div>
+  );
+}
+
+function CliSettingsDialog({
+  dashboard,
+  onClose,
+  onChanged,
+}: {
+  dashboard: DashboardSnapshot;
+  onClose: () => void;
+  onChanged: () => Promise<void>;
+}) {
+  const dialogRef = useModalDialog(onClose);
+  const [message, setMessage] = useState<string | null>(null);
+  const [busyProvider, setBusyProvider] = useState<ProviderId | null>(null);
+  const [isSavingAlert, setIsSavingAlert] = useState(false);
+
+  const changeCommand = async (provider: ProviderId, reset: boolean) => {
+    const bridge = window.quotaMonitor;
+    if (!bridge) {
+      setMessage("Executable selection is available in the desktop app.");
+      return;
+    }
+    setBusyProvider(provider);
+    try {
+      const result = reset
+        ? await bridge.resetCliExecutable(provider)
+        : await bridge.chooseCliExecutable(provider);
+      setMessage(result.message);
+      if (result.ok) await onChanged();
+    } catch {
+      setMessage("QuotaDeck could not update the CLI setting. Try again.");
+    } finally {
+      setBusyProvider(null);
+    }
+  };
+
+  const changeAlertThreshold = async (value: string) => {
+    const bridge = window.quotaMonitor;
+    const threshold: AlertThreshold =
+      value === "off" ? null : (Number(value) as 75 | 85 | 95);
+    if (!bridge) {
+      setMessage("Local alert settings are available in the desktop app.");
+      return;
+    }
+    setIsSavingAlert(true);
+    try {
+      const result = await bridge.setAlertThreshold(threshold);
+      setMessage(result.message);
+      if (result.ok) await onChanged();
+    } catch {
+      setMessage("QuotaDeck could not update the local alert setting.");
+    } finally {
+      setIsSavingAlert(false);
+    }
+  };
+
+  return (
+    <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        ref={dialogRef}
+        className="profile-dialog cli-settings-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cli-settings-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="dialog-heading">
+          <div>
+            <span className="eyebrow">Device compatibility</span>
+            <h2 id="cli-settings-title">CLI settings</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="Close">
+            <X size={18} />
+          </button>
+        </div>
+        <p>
+          QuotaDeck normally discovers official CLIs from the application PATH.
+          Choose an executable only when automatic discovery fails.
+        </p>
+        <div className="cli-status-list">
+          {(["claude", "codex"] as const).map((provider) => {
+            const status = dashboard.cliStatus[provider];
+            const name = provider === "claude" ? "Claude Code" : "Codex";
+            return (
+              <article className="cli-status-card" key={provider}>
+                <div>
+                  <strong>{name}</strong>
+                  <span
+                    className={
+                      status.callable && status.compatible
+                        ? "cli-ready"
+                        : "cli-missing"
+                    }
+                  >
+                    {status.callable && status.compatible
+                      ? "Ready"
+                      : status.callable
+                        ? "Update needed"
+                        : "Needs setup"}
+                  </span>
+                </div>
+                <p>{status.version ?? status.message}</p>
+                <small>
+                  {status.source === "custom"
+                    ? "Selected executable"
+                    : "Application PATH"}
+                </small>
+                <div className="cli-status-actions">
+                  <button
+                    type="button"
+                    className="secondary-action"
+                    disabled={busyProvider !== null}
+                    onClick={() => void changeCommand(provider, false)}
+                    aria-label={`Choose ${name} executable`}
+                  >
+                    Choose executable
+                  </button>
+                  {status.source === "custom" && (
+                    <button
+                      type="button"
+                      className="text-action"
+                      disabled={busyProvider !== null}
+                      onClick={() => void changeCommand(provider, true)}
+                    >
+                      Use PATH
+                    </button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+        <div className="alert-settings-row">
+          <div>
+            <strong>Local quota alerts</strong>
+            <p>
+              Notify only for fresh, provider-reported subscription usage.
+              QuotaDeck never alerts from stale or API-billed data.
+            </p>
+          </div>
+          <label>
+            <span>Alert threshold</span>
+            <select
+              aria-label="Local quota alert threshold"
+              value={dashboard.alertThresholdPercent ?? "off"}
+              disabled={isSavingAlert}
+              onChange={(event) =>
+                void changeAlertThreshold(event.currentTarget.value)
+              }
+            >
+              <option value="off">Off</option>
+              <option value="75">75% used</option>
+              <option value="85">85% used</option>
+              <option value="95">95% used</option>
+            </select>
+          </label>
+        </div>
+        {message && (
+          <p className="dialog-status" role="status">
+            {message}
+          </p>
+        )}
       </section>
     </div>
   );
@@ -434,6 +758,7 @@ export default function App() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAddProfile, setShowAddProfile] = useState(false);
+  const [showCliSettings, setShowCliSettings] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const loadDashboard = useCallback(async (force = false) => {
@@ -459,12 +784,15 @@ export default function App() {
       setActionMessage("Launch actions are available in the desktop app.");
       return;
     }
-    const needsSetup =
-      account.isManaged && ["unknown", "signed-out"].includes(account.state);
-    const result = needsSetup
-      ? await bridge.beginLogin(account.id)
-      : await bridge.launchProfile(account.id);
-    setActionMessage(result.message);
+    const needsSetup = account.isManaged && account.authMode === "signed-out";
+    try {
+      const result = needsSetup
+        ? await bridge.beginLogin(account.id)
+        : await bridge.launchProfile(account.id);
+      setActionMessage(result.message);
+    } catch {
+      setActionMessage("The provider session could not be opened. Try again.");
+    }
   }, []);
 
   const handleRemoveProfile = useCallback(
@@ -474,9 +802,15 @@ export default function App() {
         setActionMessage("Profile removal is available in the desktop app.");
         return;
       }
-      const result = await bridge.removeProfile(account.id);
-      setActionMessage(result.message);
-      if (result.ok) await loadDashboard(true);
+      try {
+        const result = await bridge.removeProfile(account.id);
+        setActionMessage(result.message);
+        if (result.ok) await loadDashboard(true);
+      } catch {
+        setActionMessage(
+          "The account profile could not be removed. Try again.",
+        );
+      }
     },
     [loadDashboard],
   );
@@ -489,14 +823,52 @@ export default function App() {
       );
       return;
     }
-    const result = await bridge.openEvidence();
-    setActionMessage(result.message);
+    try {
+      const result = await bridge.openEvidence();
+      setActionMessage(result.message);
+    } catch {
+      setActionMessage("The provider research could not be opened.");
+    }
+  }, []);
+
+  const handleProviderUsage = useCallback(async (provider: ProviderId) => {
+    const bridge = window.quotaMonitor;
+    if (!bridge) {
+      setActionMessage(
+        provider === "claude"
+          ? "In Claude Code, run /usage to verify current plan limits."
+          : "In Codex, open Settings → Usage to verify current plan limits.",
+      );
+      return;
+    }
+    try {
+      const result = await bridge.openProviderUsage(provider);
+      setActionMessage(result.message);
+    } catch {
+      setActionMessage("The official provider usage help could not be opened.");
+    }
   }, []);
 
   useEffect(() => {
     void loadDashboard();
-    const timer = window.setInterval(() => void loadDashboard(true), 60_000);
-    return () => window.clearInterval(timer);
+    let timer: number | null = null;
+    let cancelled = false;
+    const schedule = () => {
+      if (cancelled) return;
+      const interval = 55_000 + Math.floor(Math.random() * 15_000);
+      timer = window.setTimeout(async () => {
+        await loadDashboard(true);
+        schedule();
+      }, interval);
+    };
+    const handleFocus = () => void loadDashboard(true);
+    schedule();
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+      window.removeEventListener("focus", handleFocus);
+    };
   }, [loadDashboard]);
 
   const summary = useMemo(() => {
@@ -508,8 +880,15 @@ export default function App() {
     return { ready, total: accounts.length, reportedWindows: windows.length };
   }, [dashboard]);
 
-  const recommendation = useMemo(
-    () => recommendedAccount(dashboard?.accounts ?? []),
+  const recommendations = useMemo(
+    () =>
+      (["claude", "codex"] as const).map((provider) => ({
+        provider,
+        account: recommendedAccountForProvider(
+          dashboard?.accounts ?? [],
+          provider,
+        ),
+      })),
     [dashboard],
   );
 
@@ -522,9 +901,15 @@ export default function App() {
     );
   }
 
+  const isDialogOpen = showAddProfile || showCliSettings;
+
   return (
     <div className={`app-shell platform-${dashboard.platform.id}`}>
-      <aside className="sidebar">
+      <aside
+        className="sidebar"
+        aria-hidden={isDialogOpen ? true : undefined}
+        inert={isDialogOpen}
+      >
         <div className="brand-lockup">
           <span className="brand-mark">Q</span>
           <div>
@@ -553,8 +938,8 @@ export default function App() {
           </div>
         </div>
         <nav aria-label="Secondary navigation">
-          <button className="nav-item" disabled>
-            <Settings size={18} /> Settings <small>Soon</small>
+          <button className="nav-item" onClick={() => setShowCliSettings(true)}>
+            <Settings size={18} /> Settings
           </button>
           <button className="nav-item" disabled>
             <CircleHelp size={18} /> Help <small>Soon</small>
@@ -569,7 +954,11 @@ export default function App() {
         </div>
       </aside>
 
-      <main className="main-content">
+      <main
+        className="main-content"
+        aria-hidden={isDialogOpen ? true : undefined}
+        inert={isDialogOpen}
+      >
         <header className="topbar">
           <div className="breadcrumb">
             <span>Workspace</span>
@@ -632,7 +1021,7 @@ export default function App() {
           </section>
 
           {error && (
-            <div className="error-banner">
+            <div className="error-banner" role="alert">
               {error} Showing safe preview data.
             </div>
           )}
@@ -654,6 +1043,7 @@ export default function App() {
                     key={account.id}
                     account={account}
                     onRemove={handleRemoveProfile}
+                    onVerifyUsage={handleProviderUsage}
                   />
                 ))}
               </div>
@@ -662,12 +1052,17 @@ export default function App() {
                   <Sparkles size={17} />
                 </span>
                 <div>
-                  <strong>Best verified runway</strong>
-                  <p>
-                    {recommendation && availablePercent(recommendation) !== null
-                      ? `${recommendation.displayName} has ${Math.round(availablePercent(recommendation)!)}% available in its current reported window.`
-                      : "No provider-reported quota window is available yet. Use the account freshness labels before choosing."}
-                  </p>
+                  <strong>Best verified runway by provider</strong>
+                  <div className="provider-recommendations">
+                    {recommendations.map(({ provider, account }) => (
+                      <p key={provider}>
+                        <b>{providerMeta[provider].label}:</b>{" "}
+                        {account && availablePercent(account) !== null
+                          ? `${account.displayName} has ${Math.round(availablePercent(account)!)}% available in its tightest fresh window.`
+                          : "No fresh subscription quota is available."}
+                      </p>
+                    ))}
+                  </div>
                 </div>
                 <button onClick={() => void handleEvidence()}>
                   View evidence <ArrowRight size={15} />
@@ -688,6 +1083,13 @@ export default function App() {
           onClose={() => setShowAddProfile(false)}
           onAdded={setDashboard}
           capabilities={dashboard.capabilities}
+        />
+      )}
+      {showCliSettings && (
+        <CliSettingsDialog
+          dashboard={dashboard}
+          onClose={() => setShowCliSettings(false)}
+          onChanged={() => loadDashboard(true)}
         />
       )}
     </div>

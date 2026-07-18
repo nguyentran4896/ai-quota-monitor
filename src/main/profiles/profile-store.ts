@@ -11,6 +11,8 @@ export interface ProviderProfile {
   configRoot: string | null;
   quotaRoot?: string | null;
   isManaged: boolean;
+  verifiedIdentity?: string | null;
+  verifiedIdentityVerifier?: string | null;
   createdAt: string;
 }
 
@@ -60,6 +62,8 @@ export class ProfileStore {
           "claude-current",
         ),
         isManaged: false,
+        verifiedIdentity: null,
+        verifiedIdentityVerifier: null,
         createdAt: "1970-01-01T00:00:00.000Z",
       },
       {
@@ -69,6 +73,8 @@ export class ProfileStore {
         configRoot: null,
         quotaRoot: null,
         isManaged: false,
+        verifiedIdentity: null,
+        verifiedIdentityVerifier: null,
         createdAt: "1970-01-01T00:00:00.000Z",
       },
     ];
@@ -94,7 +100,22 @@ export class ProfileStore {
             profile.isManaged === true &&
             this.isAppOwnedPath(profile.configRoot),
         )
-        .map((profile) => ({ ...profile, quotaRoot: profile.configRoot }));
+        .map((profile) => ({
+          ...profile,
+          quotaRoot: profile.configRoot,
+          verifiedIdentity:
+            typeof profile.verifiedIdentity === "string" &&
+            profile.verifiedIdentity.includes("***") &&
+            profile.verifiedIdentity.length <= 128 &&
+            !/[\u0000-\u001f\u007f]/.test(profile.verifiedIdentity)
+              ? profile.verifiedIdentity
+              : null,
+          verifiedIdentityVerifier:
+            typeof profile.verifiedIdentityVerifier === "string" &&
+            /^[a-f0-9]{64}$/.test(profile.verifiedIdentityVerifier)
+              ? profile.verifiedIdentityVerifier
+              : null,
+        }));
     } catch {
       return [];
     }
@@ -158,6 +179,8 @@ export class ProfileStore {
       configRoot,
       quotaRoot: configRoot,
       isManaged: true,
+      verifiedIdentity: null,
+      verifiedIdentityVerifier: null,
       createdAt: new Date().toISOString(),
     };
     const profiles = await this.readManaged();
@@ -165,7 +188,41 @@ export class ProfileStore {
     return profile;
   }
 
-  async remove(
+  async verifyIdentity(
+    profileId: string,
+    maskedIdentity: string,
+    identityVerifier: string,
+  ): Promise<ProviderProfile> {
+    const normalized = maskedIdentity.trim();
+    if (
+      normalized.length < 2 ||
+      normalized.length > 128 ||
+      !normalized.includes("***") ||
+      /[\u0000-\u001f\u007f]/.test(normalized)
+    ) {
+      throw new Error("Verified account identity must be masked and valid.");
+    }
+    if (!/^[a-f0-9]{64}$/.test(identityVerifier)) {
+      throw new Error("Verified account identity proof must be valid.");
+    }
+
+    const profiles = await this.readManaged();
+    const profile = profiles.find((candidate) => candidate.id === profileId);
+    if (!profile) throw new Error("Managed profile was not found.");
+    const updated = {
+      ...profile,
+      verifiedIdentity: normalized,
+      verifiedIdentityVerifier: identityVerifier,
+    };
+    await this.writeManaged(
+      profiles.map((candidate) =>
+        candidate.id === profileId ? updated : candidate,
+      ),
+    );
+    return updated;
+  }
+
+  async getRemovalTarget(
     profileId: string,
   ): Promise<{ profile: ProviderProfile; profileDirectory: string }> {
     if (this.builtInProfiles().some((profile) => profile.id === profileId)) {
@@ -183,9 +240,17 @@ export class ProfileStore {
       throw new Error("Profile path escaped the application data directory.");
     }
 
+    return { profile, profileDirectory };
+  }
+
+  async remove(
+    profileId: string,
+  ): Promise<{ profile: ProviderProfile; profileDirectory: string }> {
+    const target = await this.getRemovalTarget(profileId);
+    const profiles = await this.readManaged();
     await this.writeManaged(
       profiles.filter((candidate) => candidate.id !== profileId),
     );
-    return { profile, profileDirectory };
+    return target;
   }
 }

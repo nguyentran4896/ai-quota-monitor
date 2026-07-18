@@ -112,7 +112,7 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "build/icon.svg"
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -127,6 +127,7 @@
       ],
       "category": "public.app-category.utilities",
       "icon": "build/icon.svg",
+      "minimumSystemVersion": "12.0",
       "hardenedRuntime": true,
       "notarize": true
     },

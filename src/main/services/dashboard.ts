@@ -1,31 +1,41 @@
-import os from "node:os";
 import path from "node:path";
-import type {
-  AccountSnapshot,
-  DashboardSnapshot,
-} from "../../shared/contracts";
+import type { AlertThreshold, DashboardSnapshot } from "../../shared/contracts";
 import {
   describeProviderCapabilities,
   describeRuntimePlatform,
 } from "../platform";
 import type { ProfileStore, ProviderProfile } from "../profiles/profile-store";
-import { collectClaudeSnapshot } from "../providers/claude-auth";
-import { collectCodexAppServerSnapshot } from "../providers/codex-app-server";
-import { collectCodexSnapshot } from "../providers/codex-session";
+import type { CodexMonitorManager } from "../providers/codex-app-server";
+import { collectProviderSnapshot } from "../providers/provider-adapters";
+import {
+  toPublicAccountSnapshot,
+  type ProviderAccountSnapshot,
+} from "../providers/provider-snapshot";
 import { mapWithConcurrency } from "./concurrency";
+import {
+  DEFAULT_PROVIDER_COMMANDS,
+  type ProviderCommands,
+} from "../settings/cli-settings-store";
+import { probeProviderCommand } from "../settings/cli-probe";
 
 const DASHBOARD_COLLECTION_CONCURRENCY = 4;
 
 function unsupportedManagedProfile(
   profile: ProviderProfile,
   notice: string,
-): AccountSnapshot {
+): ProviderAccountSnapshot {
   const observedAt = new Date().toISOString();
   return {
     id: profile.id,
     provider: profile.provider,
     displayName: profile.displayName,
+    identity: null,
+    identityVerifier: null,
+    identityVerified: false,
     plan: null,
+    authMode: "unknown",
+    billingMode: "unknown",
+    quotaStatus: "unavailable",
     state: "unknown",
     isActive: false,
     isManaged: true,
@@ -39,10 +49,13 @@ function unsupportedManagedProfile(
   };
 }
 
-async function collectProfile(
+export async function collectProfileSnapshot(
   profile: ProviderProfile,
   platform: NodeJS.Platform,
-) {
+  commands: ProviderCommands = DEFAULT_PROVIDER_COMMANDS,
+  codexMonitor?: CodexMonitorManager,
+  identityKey?: Uint8Array,
+): Promise<ProviderAccountSnapshot> {
   const capability = describeProviderCapabilities(platform)[profile.provider];
   if (profile.isManaged && !capability.managedProfiles) {
     return unsupportedManagedProfile(
@@ -51,48 +64,53 @@ async function collectProfile(
     );
   }
 
-  if (profile.provider === "claude") {
-    return collectClaudeSnapshot({
-      id: profile.id,
-      displayName: profile.displayName,
-      configRoot: profile.configRoot,
-      quotaRoot: profile.quotaRoot,
-      isManaged: profile.isManaged,
-    });
-  }
-  const codexHome = profile.configRoot ?? path.join(os.homedir(), ".codex");
-  const options = {
-    id: profile.id,
-    displayName: profile.displayName,
-    isManaged: profile.isManaged,
-  };
-  try {
-    return await collectCodexAppServerSnapshot(codexHome, options);
-  } catch {
-    const fallback = await collectCodexSnapshot(codexHome, options);
-    return {
-      ...fallback,
-      notice:
-        `Official Codex app-server was unavailable; showing the last provider-emitted local session event. ${fallback.notice ?? ""}`.trim(),
-    };
-  }
+  return collectProviderSnapshot(profile, {
+    commands,
+    codexMonitor,
+    identityKey,
+  });
 }
 
 export async function collectDashboard(
   profileStore: ProfileStore,
+  commands: ProviderCommands = DEFAULT_PROVIDER_COMMANDS,
+  codexMonitor?: CodexMonitorManager,
+  identityKey?: Uint8Array,
+  alertThresholdPercent: AlertThreshold = 85,
 ): Promise<DashboardSnapshot> {
   const platform = process.platform;
-  const accounts = await mapWithConcurrency(
-    await profileStore.list(),
-    DASHBOARD_COLLECTION_CONCURRENCY,
-    (profile) => collectProfile(profile, platform),
-  );
+  const [providerAccounts, claudeCli, codexCli] = await Promise.all([
+    mapWithConcurrency(
+      await profileStore.list(),
+      DASHBOARD_COLLECTION_CONCURRENCY,
+      (profile) =>
+        collectProfileSnapshot(
+          profile,
+          platform,
+          commands,
+          codexMonitor,
+          identityKey,
+        ),
+    ),
+    probeProviderCommand(
+      "claude",
+      commands.claude,
+      path.isAbsolute(commands.claude) ? "custom" : "path",
+    ),
+    probeProviderCommand(
+      "codex",
+      commands.codex,
+      path.isAbsolute(commands.codex) ? "custom" : "path",
+    ),
+  ]);
 
   return {
-    accounts,
+    accounts: providerAccounts.map(toPublicAccountSnapshot),
     observedAt: new Date().toISOString(),
     mode: "live",
     platform: describeRuntimePlatform(platform),
     capabilities: describeProviderCapabilities(platform),
+    cliStatus: { claude: claudeCli, codex: codexCli },
+    alertThresholdPercent,
   };
 }

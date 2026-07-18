@@ -153,6 +153,15 @@ describe("release workflow trust boundary", () => {
     expect(workflow).toContain("    environment: release");
     expect(workflow).toContain("scripts/verify-release-tag.mjs");
     expect(workflow).toContain("scripts/apple-api-key.mjs prepare");
+    expect(workflow).toContain("-c.forceCodeSigning=true");
+    expect(unsignedBuild).toContain("-c.mac.hardenedRuntime=false");
+    expect(unsignedBuild).toContain("-c.mac.notarize=false");
+    expect(workflow).toContain("Verify Authenticode signatures");
+    expect(workflow).toContain("Verify notarization and signatures");
+    expect(workflow).not.toContain("-print -quit");
+    expect(workflow).toContain('test "$app_count" -eq 2');
+    expect(workflow).toContain('xcrun stapler validate "$app_bundle"');
+    expect(workflow).toContain('hdiutil verify "$artifact"');
     expect(workflow).toContain("SHA256SUMS.txt");
   });
 });

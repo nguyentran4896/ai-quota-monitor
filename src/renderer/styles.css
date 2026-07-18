@@ -570,18 +570,93 @@ button:focus-visible {
 .status-limited i {
   background: #d96b43;
 }
-.status-unknown,
+.status-stale,
+.status-partial,
+.status-needs-first-response,
+.status-awaiting-refresh,
+.status-unavailable,
 .status-signed-out {
   background: #efefeb;
   color: #787d7a;
 }
-.status-unknown i,
+.status-stale i,
+.status-partial i,
+.status-needs-first-response i,
+.status-awaiting-refresh i,
+.status-unavailable i,
 .status-signed-out i {
   background: #9da19e;
 }
 .plan-pill {
   color: #7c817e;
   background: #f0efea;
+}
+.account-safety-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: -12px 0 18px;
+  color: #68736e;
+  font-size: 9px;
+}
+.account-safety-row strong {
+  color: #394b45;
+  margin-right: 4px;
+}
+.account-safety-row small {
+  margin-left: 4px;
+  font-size: 8px;
+  font-weight: 700;
+}
+.account-safety-row small.verified {
+  color: #2f7a60;
+}
+.account-safety-row small.pending {
+  color: #a95839;
+}
+.billing-pill {
+  flex: 0 0 auto;
+  border-radius: 10px;
+  padding: 4px 7px;
+  background: #e5f1ea;
+  color: #31735e;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.account-mode-pills {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.auth-pill {
+  flex: 0 0 auto;
+  border-radius: 10px;
+  padding: 4px 7px;
+  background: #f0efea;
+  color: #68736e;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.billing-api,
+.billing-external {
+  background: #fff0e8;
+  color: #a95839;
+}
+.billing-unknown {
+  background: #efefeb;
+  color: #787d7a;
+}
+.profile-scope {
+  margin: -10px 0 16px;
+  color: #929895;
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 .meter-heading {
   display: flex;
@@ -663,6 +738,15 @@ button:focus-visible {
   line-height: 1.45;
   margin: 5px 0 0;
 }
+.account-notice {
+  margin: 13px 0 0;
+  padding: 10px 11px;
+  border-radius: 9px;
+  background: #f4f3ee;
+  color: #69736f;
+  font-size: 9px;
+  line-height: 1.45;
+}
 .source-row {
   margin-top: auto;
   padding-top: 15px;
@@ -677,6 +761,28 @@ button:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+}
+.source-row small {
+  font-size: inherit;
+  white-space: nowrap;
+}
+.usage-help-button {
+  border: 0;
+  padding: 3px 0;
+  background: transparent;
+  color: #39745f;
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 700;
+  text-align: right;
+}
+.usage-help-button:hover {
+  color: #1f5d48;
+  text-decoration: underline;
+}
+.usage-help-button:focus-visible {
+  outline: 2px solid #2c765d;
+  outline-offset: 3px;
 }
 .insight-strip {
   margin-top: 15px;
@@ -707,6 +813,13 @@ button:focus-visible {
   margin: 3px 0 0;
   font-size: 9px;
   line-height: 1.4;
+}
+.provider-recommendations {
+  display: grid;
+  gap: 2px;
+}
+.provider-recommendations b {
+  color: #4b6259;
 }
 .insight-strip button {
   border: 0;
@@ -923,6 +1036,17 @@ button:focus-visible {
   gap: 9px;
   margin-bottom: 8px;
 }
+
+.provider-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.provider-fieldset legend {
+  margin-bottom: 8px;
+}
 .provider-choice button {
   min-height: 57px;
   display: flex;
@@ -991,6 +1115,125 @@ button:focus-visible {
   padding-top: 17px;
   border-top: 1px solid #e5e5df;
 }
+.cli-settings-dialog {
+  width: min(620px, calc(100vw - 32px));
+}
+.cli-status-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+.cli-status-card {
+  padding: 15px;
+  border: 1px solid #deded7;
+  border-radius: 11px;
+  background: #f8f7f2;
+}
+.cli-status-card > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cli-status-card strong {
+  color: #263b34;
+  font-size: 12px;
+}
+.cli-status-card span {
+  border-radius: 9px;
+  padding: 3px 6px;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.cli-ready {
+  background: #e5f1ea;
+  color: #31735e;
+}
+.cli-missing {
+  background: #fff0e8;
+  color: #a95839;
+}
+.cli-status-card p {
+  min-height: 34px;
+  margin: 11px 0 4px;
+  color: #606e68;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.cli-status-card small {
+  color: #929895;
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.cli-status-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 13px;
+}
+.cli-status-actions .secondary-action {
+  padding: 8px 10px;
+}
+.alert-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  margin-top: 14px;
+  padding: 15px;
+  border: 1px solid #deded7;
+  border-radius: 11px;
+  background: #f8f7f2;
+}
+.alert-settings-row strong {
+  color: #263b34;
+  font-size: 12px;
+}
+.alert-settings-row p {
+  max-width: 360px;
+  margin: 5px 0 0;
+  color: #707b76;
+  font-size: 9px;
+  line-height: 1.45;
+}
+.alert-settings-row label {
+  display: grid;
+  gap: 5px;
+  flex: 0 0 135px;
+}
+.alert-settings-row label span {
+  color: #7d8581;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.alert-settings-row select {
+  width: 100%;
+  border: 1px solid #cfd2cc;
+  border-radius: 8px;
+  padding: 8px 9px;
+  background: #fff;
+  color: #30463e;
+  font: inherit;
+  font-size: 10px;
+}
+.text-action {
+  border: 0;
+  background: transparent;
+  color: #39745f;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 700;
+}
+.dialog-status {
+  margin-top: 12px;
+  color: #5d6c66;
+  font-size: 10px;
+}
 .dialog-actions .primary-action {
   width: auto;
   margin: 0;
@@ -1050,6 +1293,9 @@ button:focus-visible {
     min-width: 0;
   }
   .account-grid {
+    grid-template-columns: 1fr;
+  }
+  .cli-status-list {
     grid-template-columns: 1fr;
   }
 }

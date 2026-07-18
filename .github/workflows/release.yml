@@ -51,8 +51,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build unsigned native artifacts
+      - name: Build unsigned Windows or Linux artifacts
+        if: matrix.platform != 'macos'
         run: pnpm run ${{ matrix.script }} ${{ matrix.architectures }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Build unsigned macOS inspection artifacts
+        if: matrix.platform == 'macos'
+        run: pnpm run package:mac --x64 --arm64 --publish never -c.mac.identity=null -c.mac.hardenedRuntime=false -c.mac.notarize=false
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
@@ -150,14 +157,14 @@ jobs:
 
       - name: Build signed Windows artifacts
         if: matrix.platform == 'windows'
-        run: pnpm run package:win --x64 --publish never
+        run: pnpm run package:win --x64 --publish never -c.forceCodeSigning=true
         env:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
       - name: Build signed and notarized macOS artifacts
         if: matrix.platform == 'macos'
-        run: pnpm run package:mac --x64 --arm64 --publish never
+        run: pnpm run package:mac --x64 --arm64 --publish never -c.forceCodeSigning=true
         env:
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
@@ -168,6 +175,45 @@ jobs:
       - name: Build Linux artifacts
         if: matrix.platform == 'linux'
         run: pnpm run package:linux --x64 --publish never
+
+      - name: Verify Authenticode signatures
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $artifacts = Get-ChildItem -Path release -Filter *.exe
+          if (-not $artifacts) { throw "No Windows executables were produced." }
+          foreach ($artifact in $artifacts) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $artifact.FullName
+            if ($signature.Status -ne "Valid") {
+              throw "$($artifact.Name) is not Authenticode-valid: $($signature.Status)"
+            }
+          }
+
+      - name: Verify notarization and signatures
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_count=0
+          while IFS= read -r -d '' app_bundle; do
+            codesign --verify --deep --strict --verbose=2 "$app_bundle"
+            spctl --assess --verbose --type execute "$app_bundle"
+            xcrun stapler validate "$app_bundle"
+            app_count=$((app_count + 1))
+          done < <(find release -mindepth 2 -maxdepth 2 -type d -name '*.app' -print0)
+          test "$app_count" -eq 2
+          for artifact in release/*.dmg; do
+            test -e "$artifact"
+            hdiutil verify "$artifact"
+          done
+
+      - name: Verify Linux package structure
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          dpkg-deb --info release/*.deb >/dev/null
+          test -x release/*.AppImage
 
       - name: Remove Apple notarization key
         if: always() && matrix.platform == 'macos'

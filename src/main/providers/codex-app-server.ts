@@ -1,11 +1,20 @@
-import { spawn } from "node:child_process";
-import type { AccountSnapshot, QuotaWindow } from "../../shared/contracts";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import type { QuotaWindow } from "../../shared/contracts";
 import { createProfileEnvironment } from "../profiles/profile-environment";
+import type { ProviderAccountSnapshot } from "./provider-snapshot";
+import {
+  classifyQuotaStatus,
+  createIdentityVerifier,
+  maskAccountIdentity,
+} from "./snapshot-policy";
+import { safeIsoFromEpochSeconds } from "./time-normalization";
 
 const MAX_CODEX_PROTOCOL_BUFFER_BYTES = 512 * 1024;
 
 interface RpcResponse {
   id?: number;
+  method?: string;
+  params?: unknown;
   result?: unknown;
   error?: { code?: number; message?: string };
 }
@@ -13,6 +22,7 @@ interface RpcResponse {
 interface CodexAccountResult {
   account?: {
     type?: unknown;
+    email?: unknown;
     planType?: unknown;
   } | null;
   requiresOpenaiAuth?: unknown;
@@ -35,6 +45,43 @@ interface CodexRateLimitsResult {
   rateLimitResetCredits?: {
     availableCount?: unknown;
   } | null;
+}
+
+export function mergeCodexRateLimitsUpdate(
+  current: CodexRateLimitsResult,
+  update: CodexRateLimitsResult,
+): CodexRateLimitsResult {
+  const currentLimits = current.rateLimits ?? {};
+  const updateLimits = update.rateLimits ?? {};
+  const mergeWindow = (
+    previous: CodexRateLimitWindow | null | undefined,
+    next: CodexRateLimitWindow | null | undefined,
+  ) => (next ? { ...(previous ?? {}), ...next } : previous);
+
+  return {
+    rateLimits:
+      current.rateLimits || update.rateLimits
+        ? {
+            ...currentLimits,
+            ...updateLimits,
+            primary: mergeWindow(currentLimits.primary, updateLimits.primary),
+            secondary: mergeWindow(
+              currentLimits.secondary,
+              updateLimits.secondary,
+            ),
+            individualLimit:
+              updateLimits.individualLimit == null
+                ? currentLimits.individualLimit
+                : updateLimits.individualLimit,
+            spendControlReached:
+              updateLimits.spendControlReached == null
+                ? currentLimits.spendControlReached
+                : updateLimits.spendControlReached,
+          }
+        : null,
+    rateLimitResetCredits:
+      update.rateLimitResetCredits ?? current.rateLimitResetCredits,
+  };
 }
 
 export interface CodexAppServerQueryResult {
@@ -78,14 +125,15 @@ function normalizeWindow(
   const usedPercent = asNumber(raw.usedPercent);
   const windowMinutes = asNumber(raw.windowDurationMins);
   const resetsAt = asNumber(raw.resetsAt);
-  if (usedPercent === null || windowMinutes === null) return null;
+  if (usedPercent === null || windowMinutes === null || windowMinutes <= 0) {
+    return null;
+  }
   return {
     id,
     label: windowLabel(windowMinutes),
     usedPercent: Math.max(0, Math.min(100, usedPercent)),
     windowMinutes,
-    resetsAt:
-      resetsAt === null ? null : new Date(resetsAt * 1_000).toISOString(),
+    resetsAt: safeIsoFromEpochSeconds(resetsAt),
   };
 }
 
@@ -95,9 +143,13 @@ export function mapCodexAppServerSnapshot(
     id: string;
     displayName: string;
     isManaged: boolean;
+    verifiedIdentity?: string | null;
+    verifiedIdentityVerifier?: string | null;
+    identityKey?: Uint8Array;
     observedAt?: string;
+    evaluatedAt?: string;
   },
-): AccountSnapshot {
+): ProviderAccountSnapshot {
   const observedAt = options.observedAt ?? new Date().toISOString();
   const accountType =
     typeof query.account.account?.type === "string"
@@ -112,6 +164,22 @@ export function mapCodexAppServerSnapshot(
     normalizeWindow("secondary", query.limits.rateLimits?.secondary),
   ].filter((window): window is QuotaWindow => window !== null);
   const isChatGpt = accountType === "chatgpt";
+  const authMode = !query.account.account
+    ? ("signed-out" as const)
+    : isChatGpt
+      ? ("subscription" as const)
+      : accountType === "apiKey"
+        ? ("api-key" as const)
+        : accountType
+          ? ("external-provider" as const)
+          : ("unknown" as const);
+  const billingMode = isChatGpt
+    ? ("subscription" as const)
+    : accountType === "apiKey"
+      ? ("api" as const)
+      : accountType
+        ? ("external" as const)
+        : ("unknown" as const);
   const isLimited =
     Boolean(query.limits.rateLimits?.rateLimitReachedType) ||
     quotaWindows.some((window) => window.usedPercent >= 100);
@@ -133,11 +201,32 @@ export function mapCodexAppServerSnapshot(
     notice = `Live from Codex account/rateLimits/read.${resetCredits && resetCredits > 0 ? ` ${resetCredits} earned reset credit${resetCredits === 1 ? " is" : "s are"} available.` : ""}`;
   }
 
+  const identity = maskAccountIdentity(query.account.account?.email);
+  const identityVerifier = createIdentityVerifier(
+    query.account.account?.email,
+    options.identityKey,
+  );
   return {
     id: options.id,
     provider: "codex",
     displayName: options.displayName,
+    identity,
+    identityVerifier,
+    identityVerified:
+      !options.isManaged ||
+      (identityVerifier !== null &&
+        identityVerifier === options.verifiedIdentityVerifier),
     plan,
+    authMode,
+    billingMode,
+    quotaStatus: classifyQuotaStatus({
+      authMode,
+      billingMode,
+      windows: quotaWindows,
+      observedAt,
+      evaluatedAt: options.evaluatedAt,
+      partial: isChatGpt && quotaWindows.length === 0,
+    }),
     state: !query.account.account
       ? "signed-out"
       : !isChatGpt || !quotaWindows.length
@@ -159,64 +248,72 @@ export function mapCodexAppServerSnapshot(
   };
 }
 
-export async function queryCodexAppServer(
-  codexHome: string,
-  timeoutMs = 8_000,
-): Promise<CodexAppServerQueryResult> {
-  const environment = createProfileEnvironment("codex", codexHome);
-  const child = spawn("codex", ["app-server", "--stdio"], {
-    env: environment,
-    stdio: ["pipe", "pipe", "pipe"],
-    windowsHide: true,
-    shell: false,
-  });
-
-  let buffer = "";
-  let nextId = 1;
-  let startupError: Error | null = null;
-  const pending = new Map<
+export class CodexAppServerConnection {
+  private child: ChildProcessWithoutNullStreams | null = null;
+  private buffer = "";
+  private nextId = 1;
+  private startupError: Error | null = null;
+  private initializePromise: Promise<void> | null = null;
+  private latestLimits: CodexRateLimitsResult | null = null;
+  private readonly pending = new Map<
     number,
-    { resolve: (value: unknown) => void; reject: (error: Error) => void }
+    {
+      resolve: (value: unknown) => void;
+      reject: (error: Error) => void;
+      timeout: NodeJS.Timeout;
+    }
   >();
 
-  const rejectPending = (error: Error) => {
-    for (const request of pending.values()) request.reject(error);
-    pending.clear();
-  };
+  constructor(
+    private readonly codexHome: string,
+    private readonly command = "codex",
+    private readonly timeoutMs = 8_000,
+  ) {}
 
-  child.once("error", (error) => {
-    startupError = error;
-    rejectPending(error);
-  });
-  child.stdin.on("error", () => {
-    // The exit/error handlers reject pending requests; never surface pipe contents.
-  });
-  child.stderr.resume();
-  child.stdout.setEncoding("utf8");
-  child.stdout.on("data", (chunk: string) => {
+  private rejectPending(error: Error): void {
+    for (const request of this.pending.values()) {
+      clearTimeout(request.timeout);
+      request.reject(error);
+    }
+    this.pending.clear();
+  }
+
+  private handleChunk(chunk: string): void {
     let lines: string[];
     try {
-      const next = appendCodexProtocolChunk(buffer, chunk);
-      buffer = next.remainder;
+      const next = appendCodexProtocolChunk(this.buffer, chunk);
+      this.buffer = next.remainder;
       lines = next.lines;
     } catch (error) {
       const protocolError =
         error instanceof Error
           ? error
           : new Error("Codex app-server output was invalid.");
-      startupError = protocolError;
-      rejectPending(protocolError);
-      child.kill();
+      this.startupError = protocolError;
+      this.rejectPending(protocolError);
+      this.child?.kill();
       return;
     }
     for (const line of lines) {
       if (!line.trim()) continue;
       try {
         const message = JSON.parse(line) as RpcResponse;
-        if (typeof message.id !== "number") continue;
-        const request = pending.get(message.id);
+        if (typeof message.id !== "number") {
+          if (
+            message.method === "account/rateLimits/updated" &&
+            isRecord(message.params)
+          ) {
+            this.latestLimits = mergeCodexRateLimitsUpdate(
+              this.latestLimits ?? {},
+              message.params as CodexRateLimitsResult,
+            );
+          }
+          continue;
+        }
+        const request = this.pending.get(message.id);
         if (!request) continue;
-        pending.delete(message.id);
+        clearTimeout(request.timeout);
+        this.pending.delete(message.id);
         if (message.error) {
           request.reject(
             new Error(
@@ -230,78 +327,253 @@ export async function queryCodexAppServer(
         // Ignore non-protocol stdout rather than risk exposing it in logs.
       }
     }
-  });
-  child.once("exit", (code) => {
-    if (pending.size)
-      rejectPending(
-        new Error(
-          `Codex app-server exited before responding (code ${code ?? "unknown"}).`,
-        ),
-      );
-  });
+  }
 
-  const write = (message: Record<string, unknown>) => {
-    if (startupError) throw startupError;
-    child.stdin.write(`${JSON.stringify(message)}\n`);
-  };
-  const request = (method: string, params?: Record<string, unknown>) => {
-    const id = nextId;
-    nextId += 1;
+  private async initialize(): Promise<void> {
+    const environment = createProfileEnvironment("codex", this.codexHome);
+    const child = spawn(this.command, ["app-server", "--stdio"], {
+      env: environment,
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+      shell: false,
+    });
+    this.child = child;
+    child.once("error", (error) => {
+      this.startupError = error;
+      this.rejectPending(error);
+    });
+    child.stdin.on("error", () => {
+      // Exit/error handlers reject pending requests; pipe contents stay private.
+    });
+    child.stderr.resume();
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => this.handleChunk(chunk));
+    child.once("exit", (code) => {
+      this.child = null;
+      this.initializePromise = null;
+      if (this.pending.size)
+        this.rejectPending(
+          new Error(
+            `Codex app-server exited before responding (code ${code ?? "unknown"}).`,
+          ),
+        );
+    });
+    await this.request("initialize", {
+      clientInfo: {
+        name: "quota_deck",
+        title: "QuotaDeck",
+        version: "0.1.0",
+      },
+    });
+    this.write({ method: "initialized", params: {} });
+  }
+
+  async start(): Promise<void> {
+    if (this.initializePromise) return this.initializePromise;
+    this.initializePromise = this.initialize();
+    try {
+      await this.initializePromise;
+    } catch (error) {
+      this.close();
+      throw error;
+    }
+  }
+
+  private write(message: Record<string, unknown>): void {
+    if (this.startupError) throw this.startupError;
+    if (!this.child) throw new Error("Codex app-server is not running.");
+    this.child.stdin.write(`${JSON.stringify(message)}\n`);
+  }
+
+  request(method: string, params?: Record<string, unknown>): Promise<unknown> {
+    const id = this.nextId;
+    this.nextId += 1;
     return new Promise<unknown>((resolve, reject) => {
-      pending.set(id, { resolve, reject });
+      const timeout = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error("Codex app-server operation timed out."));
+      }, this.timeoutMs);
+      timeout.unref();
+      this.pending.set(id, { resolve, reject, timeout });
       try {
-        write({ method, id, ...(params ? { params } : {}) });
+        this.write({ method, id, ...(params ? { params } : {}) });
       } catch (error) {
-        pending.delete(id);
+        clearTimeout(timeout);
+        this.pending.delete(id);
         reject(error);
       }
     });
-  };
+  }
 
-  const timeout = new Promise<never>((_resolve, reject) => {
-    setTimeout(
-      () => reject(new Error("Codex app-server quota query timed out.")),
-      timeoutMs,
-    ).unref();
-  });
+  async readSnapshot(): Promise<CodexAppServerQueryResult> {
+    await this.start();
+    const [account, limits] = await Promise.all([
+      this.request("account/read", { refreshToken: false }),
+      this.request("account/rateLimits/read"),
+    ]);
+    if (!isRecord(account) || !isRecord(limits)) {
+      throw new Error("Codex app-server returned an invalid account payload.");
+    }
+    this.latestLimits = limits as CodexRateLimitsResult;
+    return {
+      account: account as CodexAccountResult,
+      limits: this.latestLimits,
+    };
+  }
 
+  async logout(): Promise<void> {
+    await this.start();
+    await this.request("account/logout");
+  }
+
+  close(): void {
+    this.rejectPending(new Error("Codex app-server connection closed."));
+    this.child?.stdin.end();
+    this.child?.kill();
+    this.child = null;
+    this.initializePromise = null;
+  }
+}
+
+export interface CodexMonitorConnection {
+  readSnapshot(): Promise<CodexAppServerQueryResult>;
+  logout(): Promise<void>;
+  close(): void;
+}
+
+type CodexMonitorConnectionFactory = (
+  codexHome: string,
+  command: string,
+) => CodexMonitorConnection;
+
+export class CodexMonitorManager {
+  private readonly connections = new Map<string, CodexMonitorConnection>();
+
+  constructor(
+    private readonly createConnection: CodexMonitorConnectionFactory = (
+      codexHome,
+      command,
+    ) => new CodexAppServerConnection(codexHome, command),
+    private readonly maxRetainedConnections = 8,
+  ) {}
+
+  private key(codexHome: string, command: string): string {
+    return `${command}\u0000${codexHome}`;
+  }
+
+  private connection(codexHome: string, command: string) {
+    const key = this.key(codexHome, command);
+    const existing = this.connections.get(key);
+    if (existing) return { key, connection: existing, retained: true };
+
+    const connection = this.createConnection(codexHome, command);
+    const retained = this.connections.size < this.maxRetainedConnections;
+    if (retained) {
+      this.connections.set(key, connection);
+    }
+    return { key, connection, retained };
+  }
+
+  async collectSnapshot(
+    codexHome: string,
+    options: {
+      id: string;
+      displayName: string;
+      isManaged: boolean;
+      verifiedIdentity?: string | null;
+      verifiedIdentityVerifier?: string | null;
+      identityKey?: Uint8Array;
+      command?: string;
+    },
+  ): Promise<ProviderAccountSnapshot> {
+    const command = options.command ?? "codex";
+    const { key, connection, retained } = this.connection(codexHome, command);
+    try {
+      return mapCodexAppServerSnapshot(
+        await connection.readSnapshot(),
+        options,
+      );
+    } catch (error) {
+      if (retained) {
+        connection.close();
+        this.connections.delete(key);
+      }
+      throw error;
+    } finally {
+      if (!retained) connection.close();
+    }
+  }
+
+  async logoutProfile(codexHome: string, command = "codex"): Promise<void> {
+    const { key, connection } = this.connection(codexHome, command);
+    try {
+      await connection.logout();
+    } finally {
+      connection.close();
+      this.connections.delete(key);
+    }
+  }
+
+  stopProfile(codexHome: string, command = "codex"): void {
+    const key = this.key(codexHome, command);
+    this.connections.get(key)?.close();
+    this.connections.delete(key);
+  }
+
+  stopAll(): void {
+    for (const connection of this.connections.values()) connection.close();
+    this.connections.clear();
+  }
+}
+
+export async function queryCodexAppServer(
+  codexHome: string,
+  timeoutMs = 8_000,
+  command = "codex",
+): Promise<CodexAppServerQueryResult> {
+  const connection = new CodexAppServerConnection(
+    codexHome,
+    command,
+    timeoutMs,
+  );
   try {
-    const operation = (async () => {
-      await request("initialize", {
-        clientInfo: {
-          name: "quota_deck",
-          title: "QuotaDeck",
-          version: "0.1.0",
-        },
-      });
-      write({ method: "initialized", params: {} });
-      const [account, limits] = await Promise.all([
-        request("account/read", { refreshToken: false }),
-        request("account/rateLimits/read"),
-      ]);
-      if (!isRecord(account) || !isRecord(limits))
-        throw new Error(
-          "Codex app-server returned an invalid account payload.",
-        );
-      return {
-        account: account as CodexAccountResult,
-        limits: limits as CodexRateLimitsResult,
-      };
-    })();
-    return await Promise.race([operation, timeout]);
+    return await connection.readSnapshot();
   } finally {
-    rejectPending(new Error("Codex app-server connection closed."));
-    child.stdin.end();
-    child.kill();
+    connection.close();
+  }
+}
+
+export async function logoutCodexAppServer(
+  codexHome: string,
+  timeoutMs = 8_000,
+  command = "codex",
+): Promise<void> {
+  const connection = new CodexAppServerConnection(
+    codexHome,
+    command,
+    timeoutMs,
+  );
+  try {
+    await connection.logout();
+  } finally {
+    connection.close();
   }
 }
 
 export async function collectCodexAppServerSnapshot(
   codexHome: string,
-  options: { id: string; displayName: string; isManaged: boolean },
-): Promise<AccountSnapshot> {
+  options: {
+    id: string;
+    displayName: string;
+    isManaged: boolean;
+    verifiedIdentity?: string | null;
+    verifiedIdentityVerifier?: string | null;
+    identityKey?: Uint8Array;
+    command?: string;
+  },
+): Promise<ProviderAccountSnapshot> {
   return mapCodexAppServerSnapshot(
-    await queryCodexAppServer(codexHome),
+    await queryCodexAppServer(codexHome, 8_000, options.command),
     options,
   );
 }

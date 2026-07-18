@@ -49,6 +49,30 @@ describe("ProfileStore", () => {
     );
   });
 
+  it("keeps managed profiles pending until a masked identity is verified", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(os.tmpdir(), "quotadeck-test-"),
+    );
+    temporaryDirectories.push(dataDirectory);
+    const store = new ProfileStore(dataDirectory, "win32");
+    const profile = await store.create({
+      provider: "codex",
+      displayName: "Codex Work",
+    });
+
+    expect(profile.verifiedIdentity).toBeNull();
+    await expect(
+      store.verifyIdentity(profile.id, "developer@example.com", "a".repeat(64)),
+    ).rejects.toThrow("masked");
+    await store.verifyIdentity(profile.id, "d***@example.com", "a".repeat(64));
+    expect((await store.get(profile.id))?.verifiedIdentity).toBe(
+      "d***@example.com",
+    );
+    expect((await store.get(profile.id))?.verifiedIdentityVerifier).toBe(
+      "a".repeat(64),
+    );
+  });
+
   it("rejects unsafe or empty display names", async () => {
     const dataDirectory = await mkdtemp(
       path.join(os.tmpdir(), "quotadeck-test-"),
@@ -77,7 +101,7 @@ describe("ProfileStore", () => {
     ).resolves.toMatchObject({ provider: "codex" });
   });
 
-  it("detaches only managed profiles and returns the app-owned directory for trashing", async () => {
+  it("keeps a managed profile registered until its trash target is handled", async () => {
     const dataDirectory = await mkdtemp(
       path.join(os.tmpdir(), "quotadeck-remove-test-"),
     );
@@ -95,6 +119,11 @@ describe("ProfileStore", () => {
     await expect(store.remove("codex-current")).rejects.toThrow(
       "Built-in profiles cannot be removed",
     );
+    await expect(store.getRemovalTarget(first.id)).resolves.toEqual({
+      profile: first,
+      profileDirectory: path.dirname(first.configRoot!),
+    });
+    expect((await store.get(first.id))?.id).toBe(first.id);
     await expect(store.remove(first.id)).resolves.toEqual({
       profile: first,
       profileDirectory: path.dirname(first.configRoot!),
@@ -214,13 +243,13 @@ describe("createProfileLaunchSpec", () => {
     ) as {
       statusLine: { command: string };
     };
-    expect(settings.statusLine.command).toContain(
-      'set "ELECTRON_RUN_AS_NODE=1"',
+    const encoded = settings.statusLine.command.split(" ").at(-1)!;
+    const decoded = Buffer.from(encoded, "base64").toString("utf16le");
+    expect(decoded).toContain("ELECTRON_RUN_AS_NODE");
+    expect(decoded).toContain(
+      "C:\\Program Files\\QuotaDeck\\claude-statusline.cjs",
     );
-    expect(settings.statusLine.command).toContain(
-      '"C:\\Program Files\\QuotaDeck\\claude-statusline.cjs"',
-    );
-    expect(settings.statusLine.command).toContain("quotadeck-quota.json");
+    expect(decoded).toContain("quotadeck-quota.json");
   });
 
   it("writes current-account quota observations outside the provider config directory", async () => {
@@ -258,6 +287,7 @@ describe("createProfileLaunchSpec", () => {
 
 describe("cross-platform profile launching", () => {
   const spec = {
+    provider: "claude" as const,
     executable: "claude" as const,
     args: [
       "--settings",
@@ -286,10 +316,29 @@ describe("cross-platform profile launching", () => {
     );
   });
 
+  it("keeps adversarial macOS paths inside POSIX and AppleScript quoting", () => {
+    const [candidate] = createTerminalLaunchCandidates(
+      "darwin",
+      {
+        ...spec,
+        executable: "/Applications/Quota Deck/claude'; touch pwned; '",
+      },
+      "/Users/O'Brien/$workspace; touch pwned",
+    );
+    const script = candidate.args[1]!.replaceAll('\\"', '"');
+    expect(script).toContain(
+      `cd -- '/Users/O'"'"'Brien/$workspace; touch pwned'`,
+    );
+    expect(script).toContain(
+      `'/Applications/Quota Deck/claude'"'"'; touch pwned; '"'"''`,
+    );
+  });
+
   it("preserves billing overrides for a built-in macOS current profile", () => {
     const [candidate] = createTerminalLaunchCandidates(
       "darwin",
       {
+        provider: "claude",
         executable: "claude",
         args: [],
         environment: {
@@ -337,6 +386,25 @@ describe("cross-platform profile launching", () => {
     ]);
   });
 
+  it("keeps adversarial Windows paths inside PowerShell literals", () => {
+    const candidates = createTerminalLaunchCandidates(
+      "win32",
+      {
+        ...spec,
+        executable: "C:\\Program Files\\Claude & Co\\claude.exe",
+        args: ["--settings", "C:\\Users\\O'Brien; Remove-Item x"],
+      },
+      "C:\\Users\\O'Brien & Team",
+    );
+    const fallbackCommand = candidates[1]?.args.at(-1);
+    expect(fallbackCommand).toContain(
+      "Set-Location -LiteralPath 'C:\\Users\\O''Brien & Team'",
+    );
+    expect(fallbackCommand).toContain(
+      "& 'C:\\Program Files\\Claude & Co\\claude.exe' '--settings' 'C:\\Users\\O''Brien; Remove-Item x'",
+    );
+  });
+
   it("uses the packaged Electron runtime as a portable Claude collector", () => {
     expect(
       buildClaudeStatusLineCommand({
@@ -352,5 +420,22 @@ describe("cross-platform profile launching", () => {
         "'/Applications/QuotaDeck.app/Contents/Resources/claude-statusline.cjs' " +
         "'/Users/dev/Library/Application Support/QuotaDeck/quotadeck-quota.json'",
     );
+  });
+
+  it("encodes the Windows collector command so shell metacharacters stay data", () => {
+    const command = buildClaudeStatusLineCommand({
+      runtimePath: "C:\\Users\\A&B%TEMP%\\QuotaDeck.exe",
+      collectorPath: "C:\\Program Files\\Quota'Deck\\collector.cjs",
+      snapshotPath: "C:\\Users\\A&B\\quota.json",
+      platform: "win32",
+    });
+    const encoded = command.split(" ").at(-1)!;
+    const script = Buffer.from(encoded, "base64").toString("utf16le");
+
+    expect(command).toMatch(
+      /^powershell\.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand [A-Za-z0-9+/=]+$/,
+    );
+    expect(script).toContain("C:\\Users\\A&B%TEMP%\\QuotaDeck.exe");
+    expect(script).toContain("C:\\Program Files\\Quota''Deck\\collector.cjs");
   });
 });

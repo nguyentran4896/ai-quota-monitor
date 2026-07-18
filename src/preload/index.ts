@@ -1,5 +1,10 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AddProfileInput, QuotaMonitorBridge } from "../shared/contracts";
+import type {
+  AddProfileInput,
+  AlertThreshold,
+  ProviderId,
+  QuotaMonitorBridge,
+} from "../shared/contracts";
 
 const bridge: QuotaMonitorBridge = Object.freeze({
   getDashboard: () => ipcRenderer.invoke("dashboard:get"),
@@ -12,6 +17,14 @@ const bridge: QuotaMonitorBridge = Object.freeze({
     ipcRenderer.invoke("profiles:login", profileId),
   launchProfile: (profileId: string) =>
     ipcRenderer.invoke("profiles:launch", profileId),
+  chooseCliExecutable: (provider: ProviderId) =>
+    ipcRenderer.invoke("settings:choose-cli", provider),
+  resetCliExecutable: (provider: ProviderId) =>
+    ipcRenderer.invoke("settings:reset-cli", provider),
+  setAlertThreshold: (threshold: AlertThreshold) =>
+    ipcRenderer.invoke("settings:set-alert-threshold", threshold),
+  openProviderUsage: (provider: ProviderId) =>
+    ipcRenderer.invoke("usage:open", provider),
   openEvidence: () => ipcRenderer.invoke("evidence:open"),
 });
 

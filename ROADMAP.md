@@ -12,25 +12,24 @@ available.
   removal, and uninstall on clean native accounts.
 - Publish checksums and a signed `v0.2.0` preview release.
 
-## History and alerts
+## History
 
 - Store normalized, non-secret quota snapshots with bounded retention.
-- Add freshness/staleness indicators and reset timelines.
-- Add opt-in native notifications at user-defined thresholds.
-- Implement History and Settings screens with export/delete controls.
+- Implement a History screen with export/delete controls. Configurable local
+  quota notifications and the first Settings controls are already in the current
+  baseline.
 
 ## Account management
 
 - Rename and color-label managed profiles.
-- Configure custom provider CLI locations without exposing them to the renderer.
-- Detect provider CLI capability/version changes and explain remediation.
 - Add archive and orphaned-profile recovery workflows.
 
 ## 1.0 readiness
 
 - Maintain native smoke-test evidence for every release artifact.
 - Document provider-policy review and adapter compatibility ranges.
-- Add accessibility and localization review.
+- Complete native VoiceOver, Narrator, NVDA, keyboard-only, contrast, and 200%
+  zoom review; then add localization infrastructure.
 - Establish two-maintainer review for release and security-sensitive changes.
 - Evaluate auto-update only after signed releases and rollback behavior are proven.
 
