@@ -142,6 +142,16 @@ describe("release tag verification", () => {
 });
 
 describe("release workflow trust boundary", () => {
+  it("avoids duplicate push and pull-request CI matrices", async () => {
+    const workflow = await readFile(
+      path.join(projectRoot, ".github", "workflows", "ci.yml"),
+      "utf8",
+    );
+
+    expect(workflow).toContain("  push:\n    branches: [main]");
+    expect(workflow).toContain("  pull_request:");
+  });
+
   it("keeps unsigned builds secret-free and protects release builds", async () => {
     const workflow = await readFile(
       path.join(projectRoot, ".github", "workflows", "release.yml"),
