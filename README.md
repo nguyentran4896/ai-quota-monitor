@@ -60,6 +60,7 @@ user's shell profile or global environment.
 
 ```sh
 pnpm check
+pnpm audit
 pnpm package:win
 pnpm package:mac
 pnpm package:linux
@@ -67,8 +68,10 @@ pnpm package:linux
 
 Native installers must be produced on the corresponding operating-system runner;
 macOS signing and notarization cannot be performed from Windows or Linux. Tag
-builds remain artifact-only until the repository variable `RELEASES_ENABLED` is
-set to `true` and signing secrets are configured. See
+and manual builds remain unsigned workflow artifacts until the repository
+variable `RELEASES_ENABLED` is set to `true`, an annotated version tag matches
+`package.json`, and the protected `release` environment supplies signing
+secrets. See
 [the release guide](docs/releasing.md).
 
 ## Security boundary

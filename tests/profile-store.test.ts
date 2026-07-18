@@ -286,6 +286,24 @@ describe("cross-platform profile launching", () => {
     );
   });
 
+  it("preserves billing overrides for a built-in macOS current profile", () => {
+    const [candidate] = createTerminalLaunchCandidates(
+      "darwin",
+      {
+        executable: "claude",
+        args: [],
+        environment: {
+          PATH: "/opt/homebrew/bin:/usr/bin",
+          ANTHROPIC_API_KEY: "current-account-choice",
+        },
+        title: "QuotaDeck - Current Claude",
+      },
+      "/Users/dev",
+    );
+
+    expect(candidate.args.join(" ")).not.toContain("ANTHROPIC_API_KEY");
+  });
+
   it("offers native Linux terminal candidates without a shell wrapper", () => {
     const candidates = createTerminalLaunchCandidates(
       "linux",

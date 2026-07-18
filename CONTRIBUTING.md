@@ -16,6 +16,7 @@ Before opening a pull request:
 
 ```sh
 pnpm check
+pnpm audit
 ```
 
 Native installers must be built on their target operating system. Use

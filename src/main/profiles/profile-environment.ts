@@ -1,15 +1,10 @@
 import type { ProviderId } from "../../shared/contracts";
 import os from "node:os";
 import path from "node:path";
-
-const claudeBillingOverrides = [
-  "ANTHROPIC_API_KEY",
-  "ANTHROPIC_AUTH_TOKEN",
-  "CLAUDE_CODE_OAUTH_TOKEN",
-  "CLAUDE_CODE_USE_BEDROCK",
-  "CLAUDE_CODE_USE_VERTEX",
-  "CLAUDE_CODE_USE_FOUNDRY",
-] as const;
+import {
+  PROVIDER_BILLING_OVERRIDES,
+  PROVIDER_CONFIG_VARIABLE,
+} from "./provider-environment-policy";
 
 export interface ProfileEnvironmentContext {
   platform?: NodeJS.Platform;
@@ -86,12 +81,8 @@ export function createProfileEnvironment(
   );
   if (!configRoot) return environment;
 
-  if (provider === "claude") {
-    environment.CLAUDE_CONFIG_DIR = configRoot;
-    for (const variable of claudeBillingOverrides) delete environment[variable];
-  } else {
-    environment.CODEX_HOME = configRoot;
-    delete environment.OPENAI_API_KEY;
-  }
+  environment[PROVIDER_CONFIG_VARIABLE[provider]] = configRoot;
+  for (const variable of PROVIDER_BILLING_OVERRIDES[provider])
+    delete environment[variable];
   return environment;
 }

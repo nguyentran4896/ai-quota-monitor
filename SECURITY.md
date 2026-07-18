@@ -19,3 +19,7 @@ complete report within seven days and coordinate disclosure after a fix exists.
 
 QuotaDeck never needs provider tokens in a bug report. Redact user names, home
 paths, session IDs, transcripts, and account identifiers.
+
+Conduct reports use the same private GitHub reporting channel with a title that
+starts with `[CONDUCT]`; they are handled under [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md),
+not as product vulnerabilities.

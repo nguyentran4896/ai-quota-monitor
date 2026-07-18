@@ -3,6 +3,7 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  type IpcMainInvokeEvent,
   Menu,
   nativeImage,
   shell,
@@ -11,12 +12,21 @@ import {
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { AddProfileInput } from "../shared/contracts";
-import { isAllowedRendererNavigation } from "./navigation-policy";
+import {
+  isTrustedRendererUrl,
+  selectDevelopmentRendererUrl,
+} from "./navigation-policy";
 import { launchProfile } from "./profiles/profile-launcher";
 import { ProfileStore } from "./profiles/profile-store";
+import { createAsyncRequestCoalescer } from "./services/concurrency";
 import { collectDashboard } from "./services/dashboard";
 
-const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
+const rendererFilePath = path.join(__dirname, "../dist/index.html");
+const rendererFileUrl = pathToFileURL(rendererFilePath).href;
+const developmentServerUrl = selectDevelopmentRendererUrl(
+  app.isPackaged,
+  process.env.VITE_DEV_SERVER_URL,
+);
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
@@ -29,8 +39,6 @@ function resourcePath(fileName: string, developmentPath: string): string {
 
 function createWindow(): BrowserWindow {
   const isMac = process.platform === "darwin";
-  const rendererFilePath = path.join(__dirname, "../dist/index.html");
-  const rendererFileUrl = pathToFileURL(rendererFilePath).href;
   const window = new BrowserWindow({
     width: 1440,
     height: 920,
@@ -69,13 +77,7 @@ function createWindow(): BrowserWindow {
   });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (event, url) => {
-    if (
-      !isAllowedRendererNavigation(
-        url,
-        rendererFileUrl,
-        process.env.VITE_DEV_SERVER_URL ?? null,
-      )
-    ) {
+    if (!isTrustedRendererUrl(url, rendererFileUrl, developmentServerUrl)) {
       event.preventDefault();
     }
   });
@@ -87,12 +89,19 @@ function createWindow(): BrowserWindow {
     (_webContents, _permission, callback) => callback(false),
   );
 
-  if (isDevelopment && process.env.VITE_DEV_SERVER_URL) {
-    void window.loadURL(process.env.VITE_DEV_SERVER_URL);
+  if (developmentServerUrl) {
+    void window.loadURL(developmentServerUrl);
   } else {
     void window.loadFile(rendererFilePath);
   }
   return window;
+}
+
+function assertTrustedIpcSender(event: IpcMainInvokeEvent): void {
+  const senderUrl = event.senderFrame?.url ?? event.sender.getURL();
+  if (!isTrustedRendererUrl(senderUrl, rendererFileUrl, developmentServerUrl)) {
+    throw new Error("Blocked IPC request from an untrusted renderer.");
+  }
 }
 
 function showMainWindow(): void {
@@ -178,14 +187,26 @@ if (!hasSingleInstanceLock) {
       "provider-research.md",
       path.join("docs", "research", "provider-quota-and-auth.md"),
     );
-    const getDashboard = () => collectDashboard(profileStore);
-    ipcMain.handle("dashboard:get", getDashboard);
-    ipcMain.handle("dashboard:refresh", getDashboard);
-    ipcMain.handle("profiles:add", async (_event, input: AddProfileInput) => {
-      await profileStore.create(input);
+    const dashboardRequests = createAsyncRequestCoalescer(() =>
+      collectDashboard(profileStore),
+    );
+    const getDashboard = () => dashboardRequests.run();
+    ipcMain.handle("dashboard:get", (event) => {
+      assertTrustedIpcSender(event);
       return getDashboard();
     });
-    ipcMain.handle("profiles:remove", async (_event, profileId: string) => {
+    ipcMain.handle("dashboard:refresh", (event) => {
+      assertTrustedIpcSender(event);
+      return getDashboard();
+    });
+    ipcMain.handle("profiles:add", async (event, input: AddProfileInput) => {
+      assertTrustedIpcSender(event);
+      await profileStore.create(input);
+      dashboardRequests.invalidate();
+      return getDashboard();
+    });
+    ipcMain.handle("profiles:remove", async (event, profileId: string) => {
+      assertTrustedIpcSender(event);
       const profile = await profileStore.get(profileId);
       if (!profile)
         return { ok: false, message: "Account profile was not found." };
@@ -212,6 +233,7 @@ if (!hasSingleInstanceLock) {
       }
 
       const removed = await profileStore.remove(profileId);
+      dashboardRequests.invalidate();
       try {
         await shell.trashItem(removed.profileDirectory);
         return {
@@ -225,7 +247,8 @@ if (!hasSingleInstanceLock) {
         };
       }
     });
-    ipcMain.handle("profiles:login", async (_event, profileId: string) => {
+    ipcMain.handle("profiles:login", async (event, profileId: string) => {
+      assertTrustedIpcSender(event);
       const profile = await profileStore.get(profileId);
       if (!profile)
         return { ok: false, message: "Account profile was not found." };
@@ -234,7 +257,8 @@ if (!hasSingleInstanceLock) {
         runtimePath: process.execPath,
       });
     });
-    ipcMain.handle("profiles:launch", async (_event, profileId: string) => {
+    ipcMain.handle("profiles:launch", async (event, profileId: string) => {
+      assertTrustedIpcSender(event);
       const profile = await profileStore.get(profileId);
       if (!profile)
         return { ok: false, message: "Account profile was not found." };
@@ -243,7 +267,8 @@ if (!hasSingleInstanceLock) {
         runtimePath: process.execPath,
       });
     });
-    ipcMain.handle("evidence:open", async () => {
+    ipcMain.handle("evidence:open", async (event) => {
+      assertTrustedIpcSender(event);
       const error = await shell.openPath(evidencePath);
       return error
         ? {

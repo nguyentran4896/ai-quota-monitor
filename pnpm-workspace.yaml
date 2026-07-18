@@ -4,3 +4,5 @@ allowBuilds:
   sharp: true
 minimumReleaseAgeExclude:
   - lucide-react@1.25.0
+overrides:
+  esbuild: 0.28.1

@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import type { AccountSnapshot, QuotaWindow } from "../../shared/contracts";
 import { createProfileEnvironment } from "../profiles/profile-environment";
 
+const MAX_CODEX_PROTOCOL_BUFFER_BYTES = 512 * 1024;
+
 interface RpcResponse {
   id?: number;
   result?: unknown;
@@ -46,6 +48,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+export function appendCodexProtocolChunk(
+  current: string,
+  chunk: string,
+  maxBytes = MAX_CODEX_PROTOCOL_BUFFER_BYTES,
+): { lines: string[]; remainder: string } {
+  const combined = current + chunk;
+  if (Buffer.byteLength(combined, "utf8") > maxBytes) {
+    throw new Error("Codex app-server output exceeded the safety limit.");
+  }
+  const lines = combined.split(/\r?\n/);
+  return { lines: lines.slice(0, -1), remainder: lines.at(-1) ?? "" };
 }
 
 function windowLabel(minutes: number): string {
@@ -179,9 +194,21 @@ export async function queryCodexAppServer(
   child.stderr.resume();
   child.stdout.setEncoding("utf8");
   child.stdout.on("data", (chunk: string) => {
-    buffer += chunk;
-    const lines = buffer.split(/\r?\n/);
-    buffer = lines.pop() ?? "";
+    let lines: string[];
+    try {
+      const next = appendCodexProtocolChunk(buffer, chunk);
+      buffer = next.remainder;
+      lines = next.lines;
+    } catch (error) {
+      const protocolError =
+        error instanceof Error
+          ? error
+          : new Error("Codex app-server output was invalid.");
+      startupError = protocolError;
+      rejectPending(protocolError);
+      child.kill();
+      return;
+    }
     for (const line of lines) {
       if (!line.trim()) continue;
       try {

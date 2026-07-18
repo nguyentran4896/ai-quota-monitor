@@ -29,6 +29,18 @@ export interface ClaudeSnapshotOptions {
   isManaged?: boolean;
 }
 
+export function describeClaudeNotice(
+  loggedIn: boolean,
+  hasQuotaWindows: boolean,
+): string {
+  if (!loggedIn)
+    return "Sign in with Claude Code before this profile can be monitored.";
+  if (hasQuotaWindows) {
+    return "Last observed through Claude's official status-line event after a response. Additional weekly limits may apply.";
+  }
+  return "Connected. Launch this profile and complete one Claude response to capture its official quota windows.";
+}
+
 export async function collectClaudeSnapshot(
   options: ClaudeSnapshotOptions = {},
 ): Promise<AccountSnapshot> {
@@ -86,13 +98,7 @@ export async function collectClaudeSnapshot(
       isManaged,
       quotaWindows,
       source,
-      notice: loggedIn
-        ? quotaWindows.length
-          ? "Last observed through Claude's official status-line event after a response. Additional weekly limits may apply."
-          : isManaged
-            ? "Connected. Launch this profile and complete one Claude response to capture its official quota windows."
-            : "Claude is connected. Add a managed QuotaDeck profile to enable official status-line quota capture."
-        : "Sign in with Claude Code before this profile can be monitored.",
+      notice: describeClaudeNotice(loggedIn, quotaWindows.length > 0),
     };
   } catch {
     return {

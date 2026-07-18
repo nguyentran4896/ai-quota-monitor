@@ -95,10 +95,12 @@ focuses the existing instance on every platform.
 ## Release trust boundary
 
 Source validation runs on Windows, macOS, and Linux. Release artifacts are built
-on native runners. Public publishing is disabled by default and requires a
-repository variable plus Windows signing and macOS signing/notarization secrets.
-Actions are pinned to immutable commit hashes, and CodeQL and Dependabot are
-enabled for the public repository.
+on native runners. Manual and disabled-release builds are explicitly unsigned and
+cannot access signing secrets. Public publishing is disabled by default and
+requires an annotated semantic-version tag matching `package.json`, a repository
+variable, and approval for a protected `release` environment containing Windows
+signing and macOS signing/notarization secrets. Actions are pinned to immutable
+commit hashes, and CodeQL and Dependabot are enabled for the public repository.
 
 ## Explicit non-goals
 

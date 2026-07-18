@@ -1,11 +1,7 @@
-const CLAUDE_ENVIRONMENT_OVERRIDES = [
-  "ANTHROPIC_API_KEY",
-  "ANTHROPIC_AUTH_TOKEN",
-  "CLAUDE_CODE_OAUTH_TOKEN",
-  "CLAUDE_CODE_USE_BEDROCK",
-  "CLAUDE_CODE_USE_VERTEX",
-  "CLAUDE_CODE_USE_FOUNDRY",
-] as const;
+import {
+  PROVIDER_BILLING_OVERRIDES,
+  PROVIDER_CONFIG_VARIABLE,
+} from "./provider-environment-policy";
 
 export interface TerminalProfileSpec {
   executable: "claude" | "codex";
@@ -38,13 +34,11 @@ function buildPosixProfileCommand(
   spec: TerminalProfileSpec,
   homeDirectory: string,
 ): string {
-  const variablesToUnset =
-    spec.executable === "claude"
-      ? CLAUDE_ENVIRONMENT_OVERRIDES
-      : ["OPENAI_API_KEY"];
-  const profileVariable =
-    spec.executable === "claude" ? "CLAUDE_CONFIG_DIR" : "CODEX_HOME";
+  const profileVariable = PROVIDER_CONFIG_VARIABLE[spec.executable];
   const profileRoot = spec.environment[profileVariable];
+  const variablesToUnset = profileRoot
+    ? PROVIDER_BILLING_OVERRIDES[spec.executable]
+    : [];
   const environmentArguments = variablesToUnset.flatMap((variable) => [
     "-u",
     quotePosix(variable),

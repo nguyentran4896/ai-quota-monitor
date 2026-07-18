@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { mapCodexAppServerSnapshot } from "../src/main/providers/codex-app-server";
+import {
+  appendCodexProtocolChunk,
+  mapCodexAppServerSnapshot,
+} from "../src/main/providers/codex-app-server";
 
 describe("mapCodexAppServerSnapshot", () => {
   it("normalizes official account and quota RPC results", () => {
@@ -63,5 +66,20 @@ describe("mapCodexAppServerSnapshot", () => {
     expect(snapshot.state).toBe("unknown");
     expect(snapshot.quotaWindows).toEqual([]);
     expect(snapshot.notice).toContain("API or external-provider billing");
+  });
+});
+
+describe("Codex app-server protocol buffering", () => {
+  it("returns complete protocol lines and retains only the partial line", () => {
+    expect(appendCodexProtocolChunk("", '{"id":1}\n{"id":', 64)).toEqual({
+      lines: ['{"id":1}'],
+      remainder: '{"id":',
+    });
+  });
+
+  it("rejects protocol output that exceeds the configured memory ceiling", () => {
+    expect(() => appendCodexProtocolChunk("12345", "67890", 8)).toThrow(
+      "safety limit",
+    );
   });
 });

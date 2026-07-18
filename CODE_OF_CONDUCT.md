@@ -9,7 +9,9 @@ private information, and sustained disruption are not acceptable. Maintainers ma
 edit or remove content, close conversations, restrict participation, or ban people
 whose behavior harms the community.
 
-Report conduct concerns privately through the repository's maintainer contact or
-private reporting channel. Reports will be handled as confidentially as practical,
-with conflicts of interest recused. This policy applies in project spaces and when
-someone publicly represents the project.
+Report conduct concerns through GitHub **Security → Report a vulnerability** and
+start the title with `[CONDUCT]`. This provides a concrete private channel without
+publishing personal information. Do not include provider credentials or account
+data. Reports will be handled as confidentially as practical, with conflicts of
+interest recused. This policy applies in project spaces and when someone publicly
+represents the project.

@@ -6,3 +6,6 @@ contact_links:
   - name: Security vulnerability
     url: https://github.com/nguyentran4896/ai-quota-monitor/security/advisories/new
     about: Report exploitable vulnerabilities privately.
+  - name: Private conduct report
+    url: https://github.com/nguyentran4896/ai-quota-monitor/security/advisories/new
+    about: Start the title with [CONDUCT] to report a community concern privately.

@@ -1,3 +1,6 @@
+import { existsSync, statSync } from "node:fs";
+import path from "node:path";
+
 const platform = process.argv[2];
 
 const requiredByPlatform = {
@@ -26,6 +29,21 @@ if (missing.length > 0) {
     `Release signing is enabled, but ${platform} is missing: ${missing.join(", ")}`,
   );
   process.exit(1);
+}
+
+if (platform === "macos") {
+  const apiKeyPath = process.env.APPLE_API_KEY;
+  if (
+    !apiKeyPath ||
+    !path.isAbsolute(apiKeyPath) ||
+    !existsSync(apiKeyPath) ||
+    !statSync(apiKeyPath).isFile()
+  ) {
+    console.error(
+      "APPLE_API_KEY must be an existing absolute filesystem path to a .p8 key.",
+    );
+    process.exit(1);
+  }
 }
 
 console.log(`${platform} release credential names are present.`);

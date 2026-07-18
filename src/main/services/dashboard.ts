@@ -12,6 +12,9 @@ import type { ProfileStore, ProviderProfile } from "../profiles/profile-store";
 import { collectClaudeSnapshot } from "../providers/claude-auth";
 import { collectCodexAppServerSnapshot } from "../providers/codex-app-server";
 import { collectCodexSnapshot } from "../providers/codex-session";
+import { mapWithConcurrency } from "./concurrency";
+
+const DASHBOARD_COLLECTION_CONCURRENCY = 4;
 
 function unsupportedManagedProfile(
   profile: ProviderProfile,
@@ -79,10 +82,10 @@ export async function collectDashboard(
   profileStore: ProfileStore,
 ): Promise<DashboardSnapshot> {
   const platform = process.platform;
-  const accounts = await Promise.all(
-    (await profileStore.list()).map((profile) =>
-      collectProfile(profile, platform),
-    ),
+  const accounts = await mapWithConcurrency(
+    await profileStore.list(),
+    DASHBOARD_COLLECTION_CONCURRENCY,
+    (profile) => collectProfile(profile, platform),
   );
 
   return {
