@@ -1,0 +1,76 @@
+{
+  "name": "ai-quota-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "author": "QuotaDeck contributors",
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "description": "A local-first desktop companion for monitoring Claude Code and Codex subscription quota.",
+  "main": "dist-electron/main.cjs",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm build:main && concurrently -k -n main,renderer,electron -c blue,magenta,green \"pnpm dev:main\" \"pnpm dev:renderer\" \"pnpm dev:electron\"",
+    "dev:main": "tsup --watch --onSuccess \"node -e \\\"console.log('Electron main rebuilt')\\\"\"",
+    "dev:renderer": "vite --host 127.0.0.1",
+    "dev:electron": "wait-on tcp:5173 file:dist-electron/main.cjs && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
+    "build:main": "tsup",
+    "build:renderer": "vite build",
+    "build": "pnpm typecheck && pnpm build:main && pnpm build:renderer",
+    "preview": "vite preview --host 127.0.0.1",
+    "start": "electron .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "assets:icon": "node scripts/render-icon.mjs",
+    "package:win": "pnpm assets:icon && pnpm build && electron-builder --win nsis"
+  },
+  "dependencies": {
+    "lucide-react": "^1.25.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^24.10.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^6.0.3",
+    "@vitest/coverage-v8": "^4.1.10",
+    "concurrently": "^10.0.3",
+    "cross-env": "^10.1.0",
+    "electron": "^43.1.1",
+    "electron-builder": "^26.15.3",
+    "jsdom": "^29.1.1",
+    "sharp": "^0.34.5",
+    "tsup": "^8.5.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10",
+    "wait-on": "^9.0.10"
+  },
+  "build": {
+    "appId": "com.local.aiquotamonitor",
+    "productName": "QuotaDeck",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
