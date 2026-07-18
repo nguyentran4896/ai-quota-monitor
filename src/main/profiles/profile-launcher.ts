@@ -1,34 +1,58 @@
 import { execFile, spawn } from "node:child_process";
+import os from "node:os";
 import { promisify } from "node:util";
 import type { ProfileActionResult } from "../../shared/contracts";
-import type { ProviderProfile } from "./profile-store";
+import { describeProviderCapabilities } from "../platform";
+import {
+  prepareClaudeStatusLine,
+  type PrepareClaudeStatusLineOptions,
+} from "./claude-statusline-launch";
 import { createProfileEnvironment } from "./profile-environment";
+import type { ProviderProfile } from "./profile-store";
+import {
+  createTerminalLaunchCandidates,
+  type TerminalLaunchCandidate,
+  type TerminalProfileSpec,
+} from "./terminal-launcher";
+
+export {
+  buildClaudeStatusLineCommand,
+  prepareClaudeStatusLine,
+} from "./claude-statusline-launch";
+export { createTerminalLaunchCandidates } from "./terminal-launcher";
 
 export type ProfileAction = "login" | "work";
-const execFileAsync = promisify(execFile);
-
-export interface ProfileLaunchSpec {
-  executable: "claude" | "codex";
-  args: string[];
-  environment: NodeJS.ProcessEnv;
-  title: string;
+export type ProfileLaunchSpec = TerminalProfileSpec;
+export interface ProfileLauncherOptions extends PrepareClaudeStatusLineOptions {
+  command?: string;
 }
+const execFileAsync = promisify(execFile);
 
 export function createProfileLaunchSpec(
   profile: ProviderProfile,
   action: ProfileAction,
   baseEnvironment: NodeJS.ProcessEnv = process.env,
+  claudeSettingsPath?: string | null,
+  command?: string,
 ): ProfileLaunchSpec {
-  const executable = profile.provider === "claude" ? "claude" : "codex";
+  const executable =
+    command ?? (profile.provider === "claude" ? "claude" : "codex");
   const args =
     action === "work"
-      ? []
+      ? profile.provider === "claude" && claudeSettingsPath
+        ? ["--settings", claudeSettingsPath]
+        : []
       : profile.provider === "claude"
         ? ["auth", "login", "--claudeai"]
         : ["login"];
-  const environment = createProfileEnvironment(profile.provider, profile.configRoot, baseEnvironment);
+  const environment = createProfileEnvironment(
+    profile.provider,
+    profile.configRoot,
+    baseEnvironment,
+  );
 
   return {
+    provider: profile.provider,
     executable,
     args,
     environment,
@@ -36,15 +60,70 @@ export function createProfileLaunchSpec(
   };
 }
 
+async function launchCandidate(
+  candidate: TerminalLaunchCandidate,
+): Promise<void> {
+  if (candidate.waitForExit) {
+    await execFileAsync(candidate.executable, candidate.args, {
+      cwd: candidate.cwd,
+      env: candidate.environment,
+      timeout: 10_000,
+      windowsHide: true,
+      maxBuffer: 64_000,
+    });
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(candidate.executable, candidate.args, {
+      cwd: candidate.cwd,
+      env: candidate.environment,
+      detached: true,
+      stdio: "ignore",
+      windowsHide: false,
+      shell: false,
+    });
+    child.once("error", reject);
+    child.once("spawn", () => {
+      child.unref();
+      resolve();
+    });
+  });
+}
+
 export async function launchProfile(
   profile: ProviderProfile,
   action: ProfileAction,
+  options: ProfileLauncherOptions = {},
 ): Promise<ProfileActionResult> {
-  if (process.platform !== "win32") {
-    return { ok: false, message: "Profile launch is currently implemented for Windows only." };
+  const platform = options.platform ?? process.platform;
+  if (!["win32", "darwin", "linux"].includes(platform)) {
+    return {
+      ok: false,
+      message: `Profile launch is not supported on ${platform}.`,
+    };
+  }
+  const capability = describeProviderCapabilities(platform)[profile.provider];
+  if (profile.isManaged && !capability.managedProfiles) {
+    return {
+      ok: false,
+      message:
+        capability.reason ??
+        "This managed profile is unavailable on the current platform.",
+    };
   }
 
-  const spec = createProfileLaunchSpec(profile, action);
+  const statusLine =
+    action === "work"
+      ? await prepareClaudeStatusLine(profile, options)
+      : { settingsPath: null, note: null };
+  const spec = createProfileLaunchSpec(
+    profile,
+    action,
+    process.env,
+    statusLine.settingsPath,
+    options.command,
+  );
   try {
     await execFileAsync(spec.executable, ["--version"], {
       env: spec.environment,
@@ -53,37 +132,39 @@ export async function launchProfile(
       maxBuffer: 64_000,
     });
   } catch {
-    const providerName = profile.provider === "claude" ? "Claude Code" : "Codex";
+    const providerName =
+      profile.provider === "claude" ? "Claude Code" : "Codex";
     return {
       ok: false,
-      message: `${providerName} is installed but not callable as a standalone CLI. Install or repair its official CLI before launching this profile.`,
+      message: `${providerName} is not callable as a standalone CLI. Install or repair its official CLI before launching this profile.`,
     };
   }
-  return new Promise((resolve) => {
-    const child = spawn(
-      "wt.exe",
-      ["new-tab", "--title", spec.title, spec.executable, ...spec.args],
-      {
-        env: spec.environment,
-        detached: true,
-        stdio: "ignore",
-        windowsHide: false,
-        shell: false,
-      },
-    );
-    let settled = false;
-    const finish = (result: ProfileActionResult) => {
-      if (settled) return;
-      settled = true;
-      resolve(result);
-    };
-    child.once("error", () => finish({ ok: false, message: "Windows Terminal or the provider CLI could not be started." }));
-    child.once("spawn", () => {
-      child.unref();
-      finish({
+
+  const candidates = createTerminalLaunchCandidates(
+    platform,
+    spec,
+    options.homeDirectory ?? os.homedir(),
+  );
+  for (const candidate of candidates) {
+    try {
+      await launchCandidate(candidate);
+      return {
         ok: true,
-        message: action === "login" ? "Official provider login opened in a new terminal." : "Account workspace opened in a new terminal.",
-      });
-    });
-  });
+        message:
+          action === "login"
+            ? "Official provider login opened in your system terminal."
+            : `Account workspace opened in your system terminal.${statusLine.note ?? ""}`,
+      };
+    } catch {
+      // Try the next terminal supported by this operating system.
+    }
+  }
+
+  return {
+    ok: false,
+    message:
+      platform === "linux"
+        ? "No supported terminal emulator could be started. Install GNOME Terminal, Konsole, Kitty, Alacritty, or xterm."
+        : "The system terminal could not be started.",
+  };
 }
