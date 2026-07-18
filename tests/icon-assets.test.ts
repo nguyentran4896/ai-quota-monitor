@@ -6,7 +6,12 @@ import { describe, expect, it } from "vitest";
 const projectRoot = path.resolve(import.meta.dirname, "..");
 
 describe("generated application icons", () => {
-  it("writes a multi-size PNG-backed Windows ICO without builder conversion", async () => {
+  it("keeps committed icons in sync with the deterministic generator", async () => {
+    const pngPath = path.join(projectRoot, "build", "icon.png");
+    const icoPath = path.join(projectRoot, "build", "icon.ico");
+    const committedPng = await readFile(pngPath);
+    const committedIco = await readFile(icoPath);
+
     const result = spawnSync(
       process.execPath,
       [path.join(projectRoot, "scripts", "render-icon.mjs")],
@@ -14,7 +19,10 @@ describe("generated application icons", () => {
     );
     expect(result.status, result.stderr).toBe(0);
 
-    const ico = await readFile(path.join(projectRoot, "build", "icon.ico"));
+    const generatedPng = await readFile(pngPath);
+    const ico = await readFile(icoPath);
+    expect(generatedPng).toEqual(committedPng);
+    expect(ico).toEqual(committedIco);
     expect(ico.readUInt16LE(0)).toBe(0);
     expect(ico.readUInt16LE(2)).toBe(1);
     expect(ico.readUInt16LE(4)).toBeGreaterThanOrEqual(5);
