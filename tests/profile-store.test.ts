@@ -26,7 +26,7 @@ describe("ProfileStore", () => {
       path.join(os.tmpdir(), "quotadeck-test-"),
     );
     temporaryDirectories.push(dataDirectory);
-    const store = new ProfileStore(dataDirectory);
+    const store = new ProfileStore(dataDirectory, "win32");
 
     const profile = await store.create({
       provider: "claude",
