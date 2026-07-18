@@ -1,62 +1,109 @@
-# QuotaDeck architecture and platform decision
+# QuotaDeck architecture
 
-Status: accepted for v0.1, 2026-07-18
+Status: accepted cross-platform baseline, 2026-07-18
 
 ## Decision
 
-Build a local-first desktop companion with Electron, React, TypeScript, and Vite. Keep provider integrations behind adapters so the desktop shell and data sources can evolve independently.
+QuotaDeck is a local-first Electron, React, and TypeScript desktop application.
+The same source supports Windows, macOS, and Linux while native CI runners own
+their platform's packaging and signing checks.
 
-The product must distinguish three states that other quota tools often blur:
+Electron remains the appropriate first architecture because the product needs
+local provider processes, isolated per-child environments, tray lifecycle,
+filesystem observations, and native installers. A PWA cannot safely provide
+those capabilities without adding a separately secured local daemon. Tauri may
+be reconsidered if measured distribution size or idle memory becomes a product
+constraint worth a second implementation language.
 
-1. **Provider-reported** — a structured quota value emitted by the provider client.
-2. **Locally observed** — connection, plan, and last-seen state from an official local CLI.
-3. **Unavailable** — the provider has not exposed a supported machine-readable signal.
+## Truth model
 
-Unknown values must stay unknown. QuotaDeck does not invent precision from token counts because subscription limits are model-, feature-, and policy-dependent.
+Every quota observation has one of three confidence levels:
 
-## Platform comparison
+1. **Provider-reported** — structured data emitted by an official provider client.
+2. **Local observation** — connection, plan, or last-seen evidence from that client.
+3. **Unavailable** — the provider has no supported machine-readable signal.
 
-| Platform | Advantages | Costs / risks | Verdict |
-| --- | --- | --- | --- |
-| Electron + React | Fastest path on the current Node/pnpm machine; mature tray, auto-update, filesystem and subprocess support; one TypeScript codebase | Larger installer and memory footprint; requires strict renderer isolation and dependency hygiene | **Selected for v0.1** |
-| Tauri 2 + React | Small binaries, lower idle memory, narrow Rust command boundary | Rust is not installed on this machine; slower first iteration; native/plugin debugging adds complexity | Strong later optimization if footprint becomes a real problem |
-| Browser/PWA + local daemon | Easy UI deployment and remote viewing | Two processes to secure and distribute; browsers cannot safely switch local CLI profiles; localhost auth/CSRF surface | Not recommended for the core product |
-| VS Code extension | Lives where many Claude Code users work; easy command palette | Does not cover Codex desktop or non-VS Code workflows; extension host lifecycle is not a reliable monitor | Optional companion, not the platform |
-| Hosted SaaS | Central view across devices | Subscription credentials and usage metadata would leave the machine; provider APIs do not expose all required personal-plan quota | Rejected for the account-switching core |
+Unknown values stay unknown. Subscription limits cannot be safely inferred from
+token counts because providers vary cost by model, feature, and policy.
 
-## Component boundaries
+## Process boundaries
 
 ```text
 Sandboxed React renderer
         |
-        | typed, read-only IPC
+        | frozen, typed IPC bridge
         v
 Electron main process
-  |-- Claude adapter: official auth status + status-line quota event
-  |-- Codex adapter: official app-server RPC + labeled local-event fallback
-  |-- Profile registry: labels and isolated config roots, never raw tokens
-  `-- History store (next): normalized quota snapshots only
+  |-- platform boundary: menu, tray, CLI PATH, terminal launch
+  |-- Claude adapter: auth status + allow-listed status-line snapshot
+  |-- Codex adapter: app-server RPC + labeled local-session fallback
+  |-- profile registry: names + app-owned config roots only
+  `-- release boundary: native Windows/macOS/Linux builders
 ```
 
-The renderer never receives filesystem paths, command output, or credential material. Provider adapters return a normalized `AccountSnapshot` with provenance and timestamp.
+The renderer has `nodeIntegration: false`, `contextIsolation: true`, and sandboxing
+enabled. It receives normalized account snapshots and a non-sensitive runtime
+platform descriptor, never provider stdout or local paths.
 
-## Multi-account switching design
+## Portable Claude collection
 
-The safe target is **profile isolation**, not token swapping:
+Claude status-line commands require an executable that can parse JSON without
+assuming PowerShell, Python, `jq`, or a system Node.js installation. QuotaDeck
+therefore invokes its packaged Electron executable with `ELECTRON_RUN_AS_NODE=1`
+and a dependency-free CommonJS collector. The collector:
 
-- one provider config root per named profile where the official CLI supports a configurable home;
-- the user completes provider login in the provider's own flow;
-- QuotaDeck launches a work session with that profile's environment;
-- the default global profile is never overwritten;
-- the app stores labels, colors, and last normalized quota snapshot only.
+- accepts the official status-line document on standard input;
+- validates and clamps only documented quota fields;
+- atomically writes an allow-listed snapshot under the managed profile;
+- discards session IDs, transcripts, workspace paths, account identity, and all
+  other input fields;
+- exits successfully with a non-sensitive status message if capture fails.
 
-Until official support for a provider/profile combination is verified, its switch action stays unavailable and the UI explains why. Directly renaming or copying `auth.json`, keychain entries, cookies, or refresh tokens is outside the design.
+The Electron `runAsNode` fuse intentionally remains enabled for this helper.
+Disabling it requires replacing the helper with signed native binaries for all
+supported architectures.
 
-## Delivery stages
+## Profile and terminal isolation
 
-1. **Live local dashboard** — current implementation: Claude connection/plan plus last-observed Codex quota.
-2. **Named isolated profiles** — create and explicitly connect/launch profiles without copying tokens. Implemented; archive/logout UX remains.
-3. **First-party quota adapters** — implemented: Claude status-line ingestion and Codex app-server JSON-RPC, retaining the Codex local-event reader as fallback.
-4. **History and alerts** — SQLite snapshots, reset countdown, stale-data indicators, Windows notifications.
-5. **Tray and distribution** — close-to-tray and single-instance behavior are implemented; code signing, auto-update, and a persistent supervised Codex app-server remain.
-6. **Cross-device optional sync** — only opt-in encrypted normalized metrics; never auth credentials.
+Each supported managed profile owns one provider config root under Electron's
+platform `userData` directory. Launches receive a copied process environment with
+API and cloud billing overrides removed. QuotaDeck never mutates the global
+environment.
+
+Anthropic documents profile-scoped credential files only for Windows and Linux;
+macOS uses a global Keychain credential. Managed Claude profiles are therefore
+blocked on macOS at the UI, storage, dashboard, and launcher boundaries. The
+built-in current Claude profile can still write non-secret quota observations to
+QuotaDeck's data directory. QuotaDeck will not implement a Keychain swapper.
+
+- Windows tries Windows Terminal, then the built-in PowerShell console.
+- macOS asks Terminal.app to run an explicitly quoted `env` command that unsets
+  billing overrides and sets only the selected profile root.
+- Linux tries `x-terminal-emulator`, GNOME Terminal, Konsole, Kitty, Alacritty,
+  and xterm with direct argument arrays.
+
+The app augments only its child `PATH` with common GUI-missing locations such as
+Homebrew, pnpm, npm, and `~/.local/bin`.
+
+## Desktop lifecycle
+
+Windows and Linux hide on close only when a tray icon was created successfully;
+otherwise closing exits so the app cannot become unreachable. macOS follows the
+standard Dock lifecycle and retains a native application menu. A second launch
+focuses the existing instance on every platform.
+
+## Release trust boundary
+
+Source validation runs on Windows, macOS, and Linux. Release artifacts are built
+on native runners. Public publishing is disabled by default and requires a
+repository variable plus Windows signing and macOS signing/notarization secrets.
+Actions are pinned to immutable commit hashes, and CodeQL and Dependabot are
+enabled for the public repository.
+
+## Explicit non-goals
+
+- copying or renaming provider credential files;
+- browser-cookie or keychain extraction;
+- automatic quota rotation, prompt routing, or limit circumvention;
+- a hosted service that receives subscription credentials;
+- claiming cross-platform release support before native CI passes.

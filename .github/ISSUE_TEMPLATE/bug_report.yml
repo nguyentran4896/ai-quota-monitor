@@ -1,0 +1,55 @@
+name: Bug report
+description: Report reproducible incorrect behavior without account secrets.
+title: "[Bug]: "
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: Never attach tokens, auth files, transcripts, or complete session logs.
+  - type: input
+    id: version
+    attributes:
+      label: QuotaDeck version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Operating system
+      options: [Windows, macOS, Linux]
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS version and desktop environment
+      placeholder: Windows 11 24H2, macOS 15, or Ubuntu 24.04 GNOME
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider
+      options: [Claude Code, Codex, Both, Not provider-specific]
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed credentials, account identifiers, home paths, transcripts, and session content.
+          required: true

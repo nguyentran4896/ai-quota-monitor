@@ -1,6 +1,21 @@
 export type ProviderId = "claude" | "codex";
 export type AccountState = "ready" | "limited" | "signed-out" | "unknown";
-export type SourceConfidence = "provider-reported" | "local-observation" | "unavailable";
+export type SourceConfidence =
+  "provider-reported" | "local-observation" | "unavailable";
+export type RuntimePlatformId = "windows" | "macos" | "linux" | "unknown";
+
+export interface RuntimePlatform {
+  id: RuntimePlatformId;
+  label: string;
+  shortcutModifier: "Ctrl" | "⌘";
+}
+
+export interface ProviderCapability {
+  managedProfiles: boolean;
+  reason: string | null;
+}
+
+export type ProviderCapabilities = Record<ProviderId, ProviderCapability>;
 
 export interface QuotaWindow {
   id: string;
@@ -33,6 +48,8 @@ export interface DashboardSnapshot {
   accounts: AccountSnapshot[];
   observedAt: string;
   mode: "live" | "demo";
+  platform: RuntimePlatform;
+  capabilities: ProviderCapabilities;
 }
 
 export interface AddProfileInput {
@@ -49,6 +66,7 @@ export interface QuotaMonitorBridge {
   getDashboard(): Promise<DashboardSnapshot>;
   refresh(): Promise<DashboardSnapshot>;
   addProfile(input: AddProfileInput): Promise<DashboardSnapshot>;
+  removeProfile(profileId: string): Promise<ProfileActionResult>;
   beginLogin(profileId: string): Promise<ProfileActionResult>;
   launchProfile(profileId: string): Promise<ProfileActionResult>;
   openEvidence(): Promise<ProfileActionResult>;

@@ -2,12 +2,25 @@
   "name": "ai-quota-monitor",
   "version": "0.1.0",
   "private": true,
-  "author": "QuotaDeck contributors",
+  "license": "Apache-2.0",
+  "author": {
+    "name": "Nguyen Tran",
+    "email": "26730546+nguyentran4896@users.noreply.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nguyentran4896/ai-quota-monitor.git"
+  },
+  "homepage": "https://github.com/nguyentran4896/ai-quota-monitor#readme",
+  "bugs": {
+    "url": "https://github.com/nguyentran4896/ai-quota-monitor/issues"
+  },
   "packageManager": "pnpm@11.9.0",
   "engines": {
     "node": ">=22"
   },
   "description": "A local-first desktop companion for monitoring Claude Code and Codex subscription quota.",
+  "desktopName": "QuotaDeck.desktop",
   "main": "dist-electron/main.cjs",
   "type": "module",
   "scripts": {
@@ -24,8 +37,15 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "pnpm format:check && pnpm typecheck && pnpm test && pnpm build",
     "assets:icon": "node scripts/render-icon.mjs",
-    "package:win": "pnpm assets:icon && pnpm build && electron-builder --win nsis"
+    "smoke:collector": "node scripts/smoke-collector.mjs",
+    "package": "pnpm assets:icon && pnpm build && electron-builder",
+    "package:win": "pnpm assets:icon && pnpm build && electron-builder --win nsis",
+    "package:mac": "pnpm assets:icon && pnpm build && electron-builder --mac dmg zip",
+    "package:linux": "pnpm assets:icon && pnpm build && electron-builder --linux AppImage deb"
   },
   "dependencies": {
     "lucide-react": "^1.25.0",
@@ -46,6 +66,7 @@
     "electron": "^43.1.1",
     "electron-builder": "^26.15.3",
     "jsdom": "^29.1.1",
+    "prettier": "^3.9.5",
     "sharp": "^0.34.5",
     "tsup": "^8.5.0",
     "typescript": "^7.0.2",
@@ -54,8 +75,11 @@
     "wait-on": "^9.0.10"
   },
   "build": {
-    "appId": "com.local.aiquotamonitor",
+    "appId": "io.github.nguyentran4896.quotadeck",
     "productName": "QuotaDeck",
+    "asar": true,
+    "compression": "normal",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "release"
     },
@@ -66,8 +90,8 @@
     ],
     "extraResources": [
       {
-        "from": "resources/claude-statusline.ps1",
-        "to": "claude-statusline.ps1"
+        "from": "resources/claude-statusline.cjs",
+        "to": "claude-statusline.cjs"
       },
       {
         "from": "build/icon.png",
@@ -76,15 +100,51 @@
       {
         "from": "docs/research/provider-quota-and-auth.md",
         "to": "provider-research.md"
+      },
+      {
+        "from": "LICENSE",
+        "to": "LICENSE.txt"
+      },
+      {
+        "from": "NOTICE",
+        "to": "NOTICE.txt"
       }
     ],
     "win": {
       "target": "nsis",
-      "icon": "build/icon.png"
+      "icon": "build/icon.svg"
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.utilities",
+      "icon": "build/icon.svg",
+      "hardenedRuntime": true,
+      "notarize": true
+    },
+    "dmg": {
+      "title": "${productName} ${version}",
+      "backgroundColor": "#f4f2ec"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility",
+      "icon": "build/icon.svg",
+      "executableName": "quotadeck",
+      "synopsis": "Local-first AI subscription quota monitor",
+      "description": "Monitor and launch isolated Claude Code and Codex subscription profiles without copying credentials.",
+      "maintainer": "Nguyen Tran <26730546+nguyentran4896@users.noreply.github.com>"
     }
   }
 }

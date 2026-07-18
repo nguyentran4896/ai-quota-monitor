@@ -15,12 +15,22 @@ describe("parseClaudeQuotaSnapshot", () => {
       })}`,
     );
     expect(snapshot.quotaWindows).toEqual([
-      expect.objectContaining({ id: "five-hour", label: "5-hour window", usedPercent: 23.5 }),
-      expect.objectContaining({ id: "seven-day", label: "7-day window", usedPercent: 41.2 }),
+      expect.objectContaining({
+        id: "five-hour",
+        label: "5-hour window",
+        usedPercent: 23.5,
+      }),
+      expect.objectContaining({
+        id: "seven-day",
+        label: "7-day window",
+        usedPercent: 41.2,
+      }),
     ]);
   });
 
   it("rejects unsupported snapshot files", () => {
-    expect(() => parseClaudeQuotaSnapshot('{"schemaVersion":2}')).toThrow("Unsupported");
+    expect(() => parseClaudeQuotaSnapshot('{"schemaVersion":2}')).toThrow(
+      "Unsupported",
+    );
   });
 });

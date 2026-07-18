@@ -55,7 +55,10 @@ function windowLabel(minutes: number): string {
   return `${minutes}-minute window`;
 }
 
-function normalizeWindow(id: string, raw: CodexRateLimitWindow | null | undefined): QuotaWindow | null {
+function normalizeWindow(
+  id: string,
+  raw: CodexRateLimitWindow | null | undefined,
+): QuotaWindow | null {
   if (!raw) return null;
   const usedPercent = asNumber(raw.usedPercent);
   const windowMinutes = asNumber(raw.windowDurationMins);
@@ -66,32 +69,51 @@ function normalizeWindow(id: string, raw: CodexRateLimitWindow | null | undefine
     label: windowLabel(windowMinutes),
     usedPercent: Math.max(0, Math.min(100, usedPercent)),
     windowMinutes,
-    resetsAt: resetsAt === null ? null : new Date(resetsAt * 1_000).toISOString(),
+    resetsAt:
+      resetsAt === null ? null : new Date(resetsAt * 1_000).toISOString(),
   };
 }
 
 export function mapCodexAppServerSnapshot(
   query: CodexAppServerQueryResult,
-  options: { id: string; displayName: string; isManaged: boolean; observedAt?: string },
+  options: {
+    id: string;
+    displayName: string;
+    isManaged: boolean;
+    observedAt?: string;
+  },
 ): AccountSnapshot {
   const observedAt = options.observedAt ?? new Date().toISOString();
-  const accountType = typeof query.account.account?.type === "string" ? query.account.account.type : null;
-  const plan = typeof query.account.account?.planType === "string" ? query.account.account.planType : null;
+  const accountType =
+    typeof query.account.account?.type === "string"
+      ? query.account.account.type
+      : null;
+  const plan =
+    typeof query.account.account?.planType === "string"
+      ? query.account.account.planType
+      : null;
   const quotaWindows = [
     normalizeWindow("primary", query.limits.rateLimits?.primary),
     normalizeWindow("secondary", query.limits.rateLimits?.secondary),
   ].filter((window): window is QuotaWindow => window !== null);
   const isChatGpt = accountType === "chatgpt";
-  const isLimited = Boolean(query.limits.rateLimits?.rateLimitReachedType) || quotaWindows.some((window) => window.usedPercent >= 100);
-  const resetCredits = asNumber(query.limits.rateLimitResetCredits?.availableCount);
+  const isLimited =
+    Boolean(query.limits.rateLimits?.rateLimitReachedType) ||
+    quotaWindows.some((window) => window.usedPercent >= 100);
+  const resetCredits = asNumber(
+    query.limits.rateLimitResetCredits?.availableCount,
+  );
 
   let notice: string;
   if (!query.account.account) {
-    notice = "Sign in to Codex with a ChatGPT subscription before quota can be monitored.";
+    notice =
+      "Sign in to Codex with a ChatGPT subscription before quota can be monitored.";
   } else if (!isChatGpt) {
-    notice = "This profile uses API or external-provider billing, not ChatGPT subscription quota.";
+    notice =
+      "This profile uses API or external-provider billing, not ChatGPT subscription quota.";
   } else if (!quotaWindows.length) {
-    notice = "Codex is connected, but the app-server returned no subscription quota windows.";
+    notice =
+      "Codex is connected, but the app-server returned no subscription quota windows.";
   } else {
     notice = `Live from Codex account/rateLimits/read.${resetCredits && resetCredits > 0 ? ` ${resetCredits} earned reset credit${resetCredits === 1 ? " is" : "s are"} available.` : ""}`;
   }
@@ -101,20 +123,31 @@ export function mapCodexAppServerSnapshot(
     provider: "codex",
     displayName: options.displayName,
     plan,
-    state: !query.account.account ? "signed-out" : !isChatGpt || !quotaWindows.length ? "unknown" : isLimited ? "limited" : "ready",
+    state: !query.account.account
+      ? "signed-out"
+      : !isChatGpt || !quotaWindows.length
+        ? "unknown"
+        : isLimited
+          ? "limited"
+          : "ready",
     isActive: !options.isManaged,
     isManaged: options.isManaged,
     quotaWindows,
     source: {
       label: "Codex app-server",
-      confidence: quotaWindows.length ? "provider-reported" : "local-observation",
+      confidence: quotaWindows.length
+        ? "provider-reported"
+        : "local-observation",
       observedAt,
     },
     notice,
   };
 }
 
-export async function queryCodexAppServer(codexHome: string, timeoutMs = 8_000): Promise<CodexAppServerQueryResult> {
+export async function queryCodexAppServer(
+  codexHome: string,
+  timeoutMs = 8_000,
+): Promise<CodexAppServerQueryResult> {
   const environment = createProfileEnvironment("codex", codexHome);
   const child = spawn("codex", ["app-server", "--stdio"], {
     env: environment,
@@ -158,7 +191,11 @@ export async function queryCodexAppServer(codexHome: string, timeoutMs = 8_000):
         if (!request) continue;
         pending.delete(message.id);
         if (message.error) {
-          request.reject(new Error(`Codex app-server error ${message.error.code ?? "unknown"}: ${message.error.message ?? "Unknown error"}`));
+          request.reject(
+            new Error(
+              `Codex app-server error ${message.error.code ?? "unknown"}: ${message.error.message ?? "Unknown error"}`,
+            ),
+          );
         } else {
           request.resolve(message.result);
         }
@@ -168,7 +205,12 @@ export async function queryCodexAppServer(codexHome: string, timeoutMs = 8_000):
     }
   });
   child.once("exit", (code) => {
-    if (pending.size) rejectPending(new Error(`Codex app-server exited before responding (code ${code ?? "unknown"}).`));
+    if (pending.size)
+      rejectPending(
+        new Error(
+          `Codex app-server exited before responding (code ${code ?? "unknown"}).`,
+        ),
+      );
   });
 
   const write = (message: Record<string, unknown>) => {
@@ -190,21 +232,34 @@ export async function queryCodexAppServer(codexHome: string, timeoutMs = 8_000):
   };
 
   const timeout = new Promise<never>((_resolve, reject) => {
-    setTimeout(() => reject(new Error("Codex app-server quota query timed out.")), timeoutMs).unref();
+    setTimeout(
+      () => reject(new Error("Codex app-server quota query timed out.")),
+      timeoutMs,
+    ).unref();
   });
 
   try {
     const operation = (async () => {
       await request("initialize", {
-        clientInfo: { name: "quota_deck", title: "QuotaDeck", version: "0.1.0" },
+        clientInfo: {
+          name: "quota_deck",
+          title: "QuotaDeck",
+          version: "0.1.0",
+        },
       });
       write({ method: "initialized", params: {} });
       const [account, limits] = await Promise.all([
         request("account/read", { refreshToken: false }),
         request("account/rateLimits/read"),
       ]);
-      if (!isRecord(account) || !isRecord(limits)) throw new Error("Codex app-server returned an invalid account payload.");
-      return { account: account as CodexAccountResult, limits: limits as CodexRateLimitsResult };
+      if (!isRecord(account) || !isRecord(limits))
+        throw new Error(
+          "Codex app-server returned an invalid account payload.",
+        );
+      return {
+        account: account as CodexAccountResult,
+        limits: limits as CodexRateLimitsResult,
+      };
     })();
     return await Promise.race([operation, timeout]);
   } finally {
@@ -218,5 +273,8 @@ export async function collectCodexAppServerSnapshot(
   codexHome: string,
   options: { id: string; displayName: string; isManaged: boolean },
 ): Promise<AccountSnapshot> {
-  return mapCodexAppServerSnapshot(await queryCodexAppServer(codexHome), options);
+  return mapCodexAppServerSnapshot(
+    await queryCodexAppServer(codexHome),
+    options,
+  );
 }

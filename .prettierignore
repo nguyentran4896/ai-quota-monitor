@@ -1,0 +1,8 @@
+node_modules/
+dist/
+dist-electron/
+release/
+coverage/
+pnpm-lock.yaml
+docs/research/provider-quota-and-auth.md
+build/icon.png

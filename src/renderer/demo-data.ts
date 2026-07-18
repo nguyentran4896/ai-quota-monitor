@@ -1,10 +1,20 @@
 import type { DashboardSnapshot } from "../shared/contracts";
 
-const inHours = (hours: number) => new Date(Date.now() + hours * 3_600_000).toISOString();
+const inHours = (hours: number) =>
+  new Date(Date.now() + hours * 3_600_000).toISOString();
 
 export const demoDashboard: DashboardSnapshot = {
   mode: "demo",
   observedAt: new Date().toISOString(),
+  platform: {
+    id: "unknown",
+    label: "Browser preview",
+    shortcutModifier: "Ctrl",
+  },
+  capabilities: {
+    claude: { managedProfiles: true, reason: null },
+    codex: { managedProfiles: true, reason: null },
+  },
   accounts: [
     {
       id: "claude-current",
@@ -20,7 +30,8 @@ export const demoDashboard: DashboardSnapshot = {
         confidence: "local-observation",
         observedAt: new Date().toISOString(),
       },
-      notice: "Claude confirms this account is connected, but does not expose subscription quota as structured data.",
+      notice:
+        "Claude confirms this account is connected, but does not expose subscription quota as structured data.",
     },
     {
       id: "codex-current",
@@ -44,7 +55,8 @@ export const demoDashboard: DashboardSnapshot = {
         confidence: "provider-reported",
         observedAt: new Date().toISOString(),
       },
-      notice: "Updated when Codex records a session event. It is not a live billing API.",
+      notice:
+        "Updated when Codex records a session event. It is not a live billing API.",
     },
   ],
 };

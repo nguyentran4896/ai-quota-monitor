@@ -5,7 +5,11 @@ describe("parseClaudeAuthStatus", () => {
   it("parses the supported local auth status shape", () => {
     expect(
       parseClaudeAuthStatus(
-        JSON.stringify({ loggedIn: true, subscriptionType: "max", authMethod: "claude.ai" }),
+        JSON.stringify({
+          loggedIn: true,
+          subscriptionType: "max",
+          authMethod: "claude.ai",
+        }),
       ),
     ).toMatchObject({ loggedIn: true, subscriptionType: "max" });
   });
@@ -14,4 +18,3 @@ describe("parseClaudeAuthStatus", () => {
     expect(() => parseClaudeAuthStatus("[]")).toThrow("not an object");
   });
 });
-

@@ -25,37 +25,62 @@ export interface ClaudeSnapshotOptions {
   id?: string;
   displayName?: string;
   configRoot?: string | null;
+  quotaRoot?: string | null;
   isManaged?: boolean;
 }
 
-export async function collectClaudeSnapshot(options: ClaudeSnapshotOptions = {}): Promise<AccountSnapshot> {
+export async function collectClaudeSnapshot(
+  options: ClaudeSnapshotOptions = {},
+): Promise<AccountSnapshot> {
   const observedAt = new Date().toISOString();
   const id = options.id ?? "claude-current";
   const displayName = options.displayName ?? "Current Claude";
   const isManaged = options.isManaged ?? false;
-  const environment = createProfileEnvironment("claude", options.configRoot ?? null);
+  const environment = createProfileEnvironment(
+    "claude",
+    options.configRoot ?? null,
+  );
 
   try {
-    const { stdout } = await execFileAsync("claude", ["auth", "status", "--json"], {
-      timeout: 8_000,
-      windowsHide: true,
-      maxBuffer: 128_000,
-      env: environment,
-    });
+    const { stdout } = await execFileAsync(
+      "claude",
+      ["auth", "status", "--json"],
+      {
+        timeout: 8_000,
+        windowsHide: true,
+        maxBuffer: 128_000,
+        env: environment,
+      },
+    );
     const auth = parseClaudeAuthStatus(stdout);
     const loggedIn = auth.loggedIn === true;
-    const quota = options.configRoot ? await readClaudeQuotaSnapshot(options.configRoot) : null;
+    const quotaRoot = options.quotaRoot ?? options.configRoot;
+    const quota = quotaRoot ? await readClaudeQuotaSnapshot(quotaRoot) : null;
     const quotaWindows = quota?.quotaWindows ?? [];
-    const quotaLimited = quotaWindows.some((window) => window.usedPercent >= 100);
-    const source = quota && quotaWindows.length
-      ? { label: "Claude status-line", confidence: "provider-reported" as const, observedAt: quota.observedAt }
-      : { label: "Claude auth status", confidence: "local-observation" as const, observedAt };
+    const quotaLimited = quotaWindows.some(
+      (window) => window.usedPercent >= 100,
+    );
+    const source =
+      quota && quotaWindows.length
+        ? {
+            label: "Claude status-line",
+            confidence: "provider-reported" as const,
+            observedAt: quota.observedAt,
+          }
+        : {
+            label: "Claude auth status",
+            confidence: "local-observation" as const,
+            observedAt,
+          };
 
     return {
       id,
       provider: "claude",
       displayName,
-      plan: typeof auth.subscriptionType === "string" ? auth.subscriptionType : null,
+      plan:
+        typeof auth.subscriptionType === "string"
+          ? auth.subscriptionType
+          : null,
       state: loggedIn ? (quotaLimited ? "limited" : "ready") : "signed-out",
       isActive: !isManaged,
       isManaged,
@@ -79,7 +104,11 @@ export async function collectClaudeSnapshot(options: ClaudeSnapshotOptions = {})
       isActive: !isManaged,
       isManaged,
       quotaWindows: [],
-      source: { label: "Claude CLI unavailable", confidence: "unavailable", observedAt },
+      source: {
+        label: "Claude CLI unavailable",
+        confidence: "unavailable",
+        observedAt,
+      },
       notice: "QuotaDeck could not read `claude auth status`.",
     };
   }

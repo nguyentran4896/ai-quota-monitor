@@ -39,7 +39,10 @@ function formatWindowLabel(minutes: number): string {
   return `${minutes}-minute window`;
 }
 
-function toQuotaWindow(id: string, value: CodexRateWindow | null | undefined): QuotaWindow | null {
+function toQuotaWindow(
+  id: string,
+  value: CodexRateWindow | null | undefined,
+): QuotaWindow | null {
   if (!value) return null;
   const usedPercent = asFiniteNumber(value.used_percent);
   const windowMinutes = asFiniteNumber(value.window_minutes);
@@ -51,7 +54,10 @@ function toQuotaWindow(id: string, value: CodexRateWindow | null | undefined): Q
     label: formatWindowLabel(windowMinutes),
     usedPercent: Math.max(0, Math.min(100, usedPercent)),
     windowMinutes,
-    resetsAt: resetsAtSeconds === null ? null : new Date(resetsAtSeconds * 1_000).toISOString(),
+    resetsAt:
+      resetsAtSeconds === null
+        ? null
+        : new Date(resetsAtSeconds * 1_000).toISOString(),
   };
 }
 
@@ -116,7 +122,9 @@ async function findRecentJsonlFiles(root: string): Promise<FileCandidate[]> {
   }
 
   await visit(root);
-  return candidates.sort((a, b) => b.modifiedMs - a.modifiedMs).slice(0, MAX_CANDIDATES);
+  return candidates
+    .sort((a, b) => b.modifiedMs - a.modifiedMs)
+    .slice(0, MAX_CANDIDATES);
 }
 
 export async function collectCodexSnapshot(
@@ -127,24 +135,35 @@ export async function collectCodexSnapshot(
   const id = options.id ?? "codex-current";
   const displayName = options.displayName ?? "Current Codex";
   const isManaged = options.isManaged ?? false;
-  const candidates = await findRecentJsonlFiles(path.join(codexHome, "sessions"));
+  const candidates = await findRecentJsonlFiles(
+    path.join(codexHome, "sessions"),
+  );
 
   for (const candidate of candidates) {
-    const rateLimits = extractLatestRateLimits(await readTail(candidate.filePath));
+    const rateLimits = extractLatestRateLimits(
+      await readTail(candidate.filePath),
+    );
     if (!rateLimits) continue;
 
     const quotaWindows = [
       toQuotaWindow("primary", rateLimits.primary),
       toQuotaWindow("secondary", rateLimits.secondary),
     ].filter((window): window is QuotaWindow => window !== null);
-    const highestUsage = quotaWindows.reduce((max, window) => Math.max(max, window.usedPercent), 0);
+    const highestUsage = quotaWindows.reduce(
+      (max, window) => Math.max(max, window.usedPercent),
+      0,
+    );
 
     return {
       id,
       provider: "codex",
       displayName,
-      plan: typeof rateLimits.plan_type === "string" ? rateLimits.plan_type : null,
-      state: rateLimits.rate_limit_reached_type || highestUsage >= 100 ? "limited" : "ready",
+      plan:
+        typeof rateLimits.plan_type === "string" ? rateLimits.plan_type : null,
+      state:
+        rateLimits.rate_limit_reached_type || highestUsage >= 100
+          ? "limited"
+          : "ready",
       isActive: !isManaged,
       isManaged,
       quotaWindows,
@@ -168,7 +187,12 @@ export async function collectCodexSnapshot(
     isActive: !isManaged,
     isManaged,
     quotaWindows: [],
-    source: { label: "No local Codex quota event", confidence: "unavailable", observedAt },
-    notice: "Use Codex once, then refresh. Quota snapshots appear only after a session records them.",
+    source: {
+      label: "No local Codex quota event",
+      confidence: "unavailable",
+      observedAt,
+    },
+    notice:
+      "Use Codex once, then refresh. Quota snapshots appear only after a session records them.",
   };
 }
