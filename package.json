@@ -64,6 +64,20 @@
       "dist-electron/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "resources/claude-statusline.ps1",
+        "to": "claude-statusline.ps1"
+      },
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      },
+      {
+        "from": "docs/research/provider-quota-and-auth.md",
+        "to": "provider-research.md"
+      }
+    ],
     "win": {
       "target": "nsis",
       "icon": "build/icon.png"

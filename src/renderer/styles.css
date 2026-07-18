@@ -29,8 +29,11 @@ button:focus-visible { outline: 3px solid rgba(47, 139, 106, .28); outline-offse
 .sidebar nav { display: grid; gap: 5px; }
 .nav-item { width: 100%; border: 0; background: transparent; color: rgba(255,255,255,.67); border-radius: 9px; padding: 11px 12px; display: flex; align-items: center; gap: 11px; cursor: pointer; text-align: left; font-size: 13px; font-weight: 500; }
 .nav-item:hover { background: rgba(255,255,255,.06); color: white; }
+.nav-item:disabled { cursor: default; opacity: .58; }
+.nav-item:disabled:hover { background: transparent; color: rgba(255,255,255,.67); }
 .nav-item.active { background: rgba(255,255,255,.1); color: white; box-shadow: inset 3px 0 0 var(--mint); }
 .nav-item span { margin-left: auto; min-width: 21px; text-align: center; border-radius: 10px; color: #153d32; background: var(--mint); font-size: 10px; padding: 2px 5px; }
+.nav-item small { margin-left: auto; color: rgba(255,255,255,.45); font-size: 8px; text-transform: uppercase; letter-spacing: .06em; }
 .sidebar-spacer { flex: 1; min-height: 32px; }
 .privacy-card { display: flex; gap: 10px; padding: 15px 13px; margin-bottom: 16px; border-radius: 11px; background: rgba(185,243,213,.09); border: 1px solid rgba(185,243,213,.12); color: var(--mint); }
 .privacy-card strong { display: block; color: #e9fff3; font-size: 11px; }
@@ -79,7 +82,7 @@ button:focus-visible { outline: 3px solid rgba(47, 139, 106, .28); outline-offse
 .section-heading h2, .panel-heading h2 { color: #263732; margin: 6px 0 0; font: 600 17px "Segoe UI Variable Display", "Segoe UI", sans-serif; letter-spacing: -.03em; }
 .last-updated { color: #a0a6a3; font-size: 9px; }
 .account-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
-.account-card { position: relative; min-height: 307px; padding: 22px; background: var(--paper); border: 1px solid #deded7; border-radius: 14px; overflow: hidden; box-shadow: 0 12px 30px rgba(44,63,56,.035); }
+.account-card { position: relative; min-height: 307px; padding: 22px; background: var(--paper); border: 1px solid #deded7; border-radius: 14px; overflow: hidden; box-shadow: 0 12px 30px rgba(44,63,56,.035); display: flex; flex-direction: column; }
 .account-card::before { content: ""; position: absolute; left: 0; top: 0; right: 0; height: 3px; background: var(--mint); }
 .account-card.accent-coral::before { background: var(--coral); }
 .account-card-top { display: flex; justify-content: space-between; align-items: flex-start; }
@@ -89,6 +92,7 @@ button:focus-visible { outline: 3px solid rgba(47, 139, 106, .28); outline-offse
 .provider-identity h3 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 6px 0 0; color: #21332e; font: 600 14px "Segoe UI Variable Display", "Segoe UI", sans-serif; }
 .icon-button { display: grid; place-items: center; width: 30px; height: 30px; background: transparent; border: 0; color: #9ba19e; border-radius: 7px; cursor: pointer; }
 .icon-button:hover { background: #efeee9; color: #53615c; }
+.provider-live-dot { width: 7px; height: 7px; margin-top: 7px; border-radius: 50%; background: #50b68f; box-shadow: 0 0 0 4px #e7f4ed; }
 .account-meta-row { display: flex; gap: 7px; margin: 18px 0 21px; }
 .status-pill, .plan-pill { border-radius: 12px; padding: 5px 8px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
 .status-pill { background: #e7f4ed; color: #31735e; display: inline-flex; align-items: center; gap: 5px; }
@@ -105,11 +109,13 @@ button:focus-visible { outline: 3px solid rgba(47, 139, 106, .28); outline-offse
 .meter-track { margin: 13px 0 8px; height: 7px; overflow: hidden; border-radius: 6px; background: #e9eae5; }
 .meter-track span { height: 100%; display: block; border-radius: inherit; background: linear-gradient(90deg, #277e64, #63bd98); }
 .meter-footer { display: flex; justify-content: space-between; color: #9ba19e; font-size: 9px; }
+.quota-stack { display: grid; gap: 17px; }
+.quota-stack .quota-meter + .quota-meter { padding-top: 16px; border-top: 1px solid #ebeae5; }
 .unavailable-meter { min-height: 95px; padding: 16px; border: 1px dashed #d8d8d1; border-radius: 10px; display: flex; gap: 11px; align-items: flex-start; background: #f7f6f1; }
 .unavailable-icon { width: 31px; height: 31px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 8px; background: #ecebe5; color: #848c88; }
 .unavailable-meter strong { color: #4d5b56; font-size: 10px; }
 .unavailable-meter p { color: #929895; font-size: 9px; line-height: 1.45; margin: 5px 0 0; }
-.source-row { position: absolute; left: 22px; right: 22px; bottom: 17px; padding-top: 12px; border-top: 1px solid #ebeae5; display: flex; align-items: center; justify-content: space-between; color: #9da29f; font-size: 8px; }
+.source-row { margin-top: auto; padding-top: 15px; border-top: 1px solid #ebeae5; display: flex; align-items: center; justify-content: space-between; color: #9da29f; font-size: 8px; }
 .source-row span:first-child { display: inline-flex; align-items: center; gap: 5px; }
 .insight-strip { margin-top: 15px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid #d8ddd6; border-radius: 12px; background: #e9f1ea; }
 .insight-icon { width: 31px; height: 31px; display: grid; place-items: center; border-radius: 8px; background: #d6e9db; color: #34745f; }

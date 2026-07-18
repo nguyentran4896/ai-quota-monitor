@@ -32,8 +32,8 @@ Sandboxed React renderer
         | typed, read-only IPC
         v
 Electron main process
-  |-- Claude adapter: official `claude auth status`
-  |-- Codex adapter: latest provider-emitted local rate-limit event
+  |-- Claude adapter: official auth status + status-line quota event
+  |-- Codex adapter: official app-server RPC + labeled local-event fallback
   |-- Profile registry: labels and isolated config roots, never raw tokens
   `-- History store (next): normalized quota snapshots only
 ```
@@ -56,7 +56,7 @@ Until official support for a provider/profile combination is verified, its switc
 
 1. **Live local dashboard** — current implementation: Claude connection/plan plus last-observed Codex quota.
 2. **Named isolated profiles** — create and explicitly connect/launch profiles without copying tokens. Implemented; archive/logout UX remains.
-3. **First-party quota adapters** — Claude status-line ingestion and Codex app-server JSON-RPC, retaining the Codex local-event reader as fallback.
+3. **First-party quota adapters** — implemented: Claude status-line ingestion and Codex app-server JSON-RPC, retaining the Codex local-event reader as fallback.
 4. **History and alerts** — SQLite snapshots, reset countdown, stale-data indicators, Windows notifications.
-5. **Tray and packaging** — tray glance view, signed installer, auto-update, crash-safe adapter supervision.
+5. **Tray and distribution** — close-to-tray and single-instance behavior are implemented; code signing, auto-update, and a persistent supervised Codex app-server remain.
 6. **Cross-device optional sync** — only opt-in encrypted normalized metrics; never auth credentials.

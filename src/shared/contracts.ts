@@ -51,4 +51,5 @@ export interface QuotaMonitorBridge {
   addProfile(input: AddProfileInput): Promise<DashboardSnapshot>;
   beginLogin(profileId: string): Promise<ProfileActionResult>;
   launchProfile(profileId: string): Promise<ProfileActionResult>;
+  openEvidence(): Promise<ProfileActionResult>;
 }

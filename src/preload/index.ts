@@ -7,6 +7,7 @@ const bridge: QuotaMonitorBridge = Object.freeze({
   addProfile: (input: AddProfileInput) => ipcRenderer.invoke("profiles:add", input),
   beginLogin: (profileId: string) => ipcRenderer.invoke("profiles:login", profileId),
   launchProfile: (profileId: string) => ipcRenderer.invoke("profiles:launch", profileId),
+  openEvidence: () => ipcRenderer.invoke("evidence:open"),
 });
 
 contextBridge.exposeInMainWorld("quotaMonitor", bridge);

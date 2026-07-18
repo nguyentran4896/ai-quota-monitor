@@ -2,11 +2,9 @@ import {
   Activity,
   ArrowRight,
   Check,
-  ChevronDown,
   CircleHelp,
   Gauge,
   LayoutDashboard,
-  MoreHorizontal,
   Plus,
   RefreshCw,
   Settings,
@@ -15,7 +13,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AccountSnapshot, DashboardSnapshot, ProviderId, QuotaWindow } from "../shared/contracts";
 import { demoDashboard } from "./demo-data";
 
@@ -50,8 +48,8 @@ function resetLabel(value: string | null): string {
 }
 
 function availablePercent(account: AccountSnapshot): number | null {
-  const window = account.quotaWindows[0];
-  return window ? Math.max(0, 100 - window.usedPercent) : null;
+  if (!account.quotaWindows.length) return null;
+  return Math.min(...account.quotaWindows.map((window) => Math.max(0, 100 - window.usedPercent)));
 }
 
 function recommendedAccount(accounts: AccountSnapshot[]): AccountSnapshot | undefined {
@@ -93,7 +91,6 @@ function QuotaMeter({ window }: { window: QuotaWindow }) {
 
 function AccountCard({ account }: { account: AccountSnapshot }) {
   const meta = providerMeta[account.provider];
-  const primaryWindow = account.quotaWindows[0];
 
   return (
     <article className={`account-card accent-${meta.accent}`}>
@@ -105,9 +102,7 @@ function AccountCard({ account }: { account: AccountSnapshot }) {
             <h3>{account.displayName}</h3>
           </div>
         </div>
-        <button className="icon-button" aria-label={`More options for ${account.displayName}`}>
-          <MoreHorizontal size={19} />
-        </button>
+        <span className="provider-live-dot" title="Local profile" />
       </div>
 
       <div className="account-meta-row">
@@ -117,8 +112,10 @@ function AccountCard({ account }: { account: AccountSnapshot }) {
         <span className="plan-pill">{titleCase(account.plan)}</span>
       </div>
 
-      {primaryWindow ? (
-        <QuotaMeter window={primaryWindow} />
+      {account.quotaWindows.length ? (
+        <div className="quota-stack">
+          {account.quotaWindows.map((window) => <QuotaMeter key={window.id} window={window} />)}
+        </div>
       ) : (
         <div className="unavailable-meter">
           <div className="unavailable-icon">
@@ -150,6 +147,7 @@ function SmartSwitcher({
 }) {
   const [selected, setSelected] = useState(recommendedAccount(accounts)?.id ?? "");
   const [isLaunching, setIsLaunching] = useState(false);
+  const firstOptionRef = useRef<HTMLButtonElement>(null);
   const selectedAccount = accounts.find((account) => account.id === selected) ?? accounts[0];
   const needsSetup = selectedAccount?.isManaged && ["unknown", "signed-out"].includes(selectedAccount.state);
 
@@ -162,6 +160,17 @@ function SmartSwitcher({
       setIsLaunching(false);
     }
   };
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        firstOptionRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, []);
 
   return (
     <aside className="switcher-panel">
@@ -177,14 +186,14 @@ function SmartSwitcher({
       <div className="switcher-list" role="listbox" aria-label="AI accounts">
         {accounts.map((account) => {
           const meta = providerMeta[account.provider];
-          const available = account.quotaWindows[0]
-            ? `${Math.round(100 - account.quotaWindows[0].usedPercent)}% free`
-            : "Quota hidden";
+          const remaining = availablePercent(account);
+          const available = remaining === null ? "Quota hidden" : `${Math.round(remaining)}% free`;
           const isSelected = account.id === selectedAccount?.id;
           return (
             <button
               className={`switcher-item ${isSelected ? "selected" : ""}`}
               key={account.id}
+              ref={account === accounts[0] ? firstOptionRef : undefined}
               onClick={() => setSelected(account.id)}
               role="option"
               aria-selected={isSelected}
@@ -310,6 +319,16 @@ export default function App() {
     setActionMessage(result.message);
   }, []);
 
+  const handleEvidence = useCallback(async () => {
+    const bridge = window.quotaMonitor;
+    if (!bridge) {
+      setActionMessage("The cited research is available in docs/research in the desktop project.");
+      return;
+    }
+    const result = await bridge.openEvidence();
+    setActionMessage(result.message);
+  }, []);
+
   useEffect(() => {
     void loadDashboard();
     const timer = window.setInterval(() => void loadDashboard(true), 60_000);
@@ -320,10 +339,7 @@ export default function App() {
     const accounts = dashboard?.accounts ?? [];
     const ready = accounts.filter((account) => account.state === "ready").length;
     const windows = accounts.flatMap((account) => account.quotaWindows);
-    const averageAvailable = windows.length
-      ? Math.round(windows.reduce((sum, window) => sum + (100 - window.usedPercent), 0) / windows.length)
-      : null;
-    return { ready, total: accounts.length, averageAvailable };
+    return { ready, total: accounts.length, reportedWindows: windows.length };
   }, [dashboard]);
 
   const recommendation = useMemo(
@@ -344,8 +360,8 @@ export default function App() {
         </div>
         <nav aria-label="Main navigation">
           <button className="nav-item active"><LayoutDashboard size={18} /> Overview</button>
-          <button className="nav-item"><Users size={18} /> Accounts <span>{dashboard.accounts.length}</span></button>
-          <button className="nav-item"><Activity size={18} /> History</button>
+          <button className="nav-item" onClick={() => setShowAddProfile(true)}><Users size={18} /> Accounts <span>{dashboard.accounts.length}</span></button>
+          <button className="nav-item" disabled><Activity size={18} /> History <small>Soon</small></button>
         </nav>
         <div className="sidebar-spacer" />
         <div className="privacy-card">
@@ -353,10 +369,10 @@ export default function App() {
           <div><strong>Local by design</strong><p>Credentials never leave this device.</p></div>
         </div>
         <nav aria-label="Secondary navigation">
-          <button className="nav-item"><Settings size={18} /> Settings</button>
-          <button className="nav-item"><CircleHelp size={18} /> Help</button>
+          <button className="nav-item" disabled><Settings size={18} /> Settings <small>Soon</small></button>
+          <button className="nav-item" disabled><CircleHelp size={18} /> Help <small>Soon</small></button>
         </nav>
-        <div className="profile-chip"><span>NT</span><div><strong>Local workspace</strong><small>Windows</small></div><ChevronDown size={15} /></div>
+        <div className="profile-chip"><span>NT</span><div><strong>Local workspace</strong><small>Windows</small></div></div>
       </aside>
 
       <main className="main-content">
@@ -381,9 +397,9 @@ export default function App() {
             </div>
             <div className="summary-card">
               <div className="summary-icon"><Gauge size={22} /></div>
-              <div className="summary-stat"><strong>{summary.averageAvailable ?? "—"}{summary.averageAvailable !== null && "%"}</strong><span>average available</span></div>
+              <div className="summary-stat"><strong>{summary.ready}/{summary.total}</strong><span>accounts ready</span></div>
               <div className="summary-divider" />
-              <div className="summary-stat compact"><strong>{summary.ready}/{summary.total}</strong><span>accounts ready</span></div>
+              <div className="summary-stat compact"><strong>{summary.reportedWindows}</strong><span>reported windows</span></div>
             </div>
           </section>
 
@@ -408,7 +424,7 @@ export default function App() {
                       : "No provider-reported quota window is available yet. Use the account freshness labels before choosing."}
                   </p>
                 </div>
-                <button>View evidence <ArrowRight size={15} /></button>
+                <button onClick={() => void handleEvidence()}>View evidence <ArrowRight size={15} /></button>
               </div>
             </div>
             <SmartSwitcher accounts={dashboard.accounts} onAction={handleProfileAction} actionMessage={actionMessage} />

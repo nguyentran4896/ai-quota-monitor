@@ -38,7 +38,7 @@ const builtInProfiles: ProviderProfile[] = [
 
 function validateDisplayName(value: string): string {
   const normalized = value.trim().replace(/\s+/g, " ");
-  if (normalized.length < 2 || normalized.length > 48) {
+  if (normalized.length < 2 || normalized.length > 48 || /[\u0000-\u001f\u007f]/.test(normalized)) {
     throw new Error("Account name must be between 2 and 48 characters.");
   }
   return normalized;
@@ -66,6 +66,9 @@ export class ProfileStore {
           typeof profile?.id === "string" &&
           isProvider(profile.provider) &&
           typeof profile.displayName === "string" &&
+          profile.displayName.trim().length >= 2 &&
+          profile.displayName.trim().length <= 48 &&
+          !/[\u0000-\u001f\u007f]/.test(profile.displayName) &&
           typeof profile.configRoot === "string" &&
           profile.isManaged === true &&
           this.isAppOwnedPath(profile.configRoot),

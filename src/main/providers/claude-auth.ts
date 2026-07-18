@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { AccountSnapshot } from "../../shared/contracts";
 import { createProfileEnvironment } from "../profiles/profile-environment";
+import { readClaudeQuotaSnapshot } from "./claude-statusline";
 
 const execFileAsync = promisify(execFile);
 
@@ -43,23 +44,29 @@ export async function collectClaudeSnapshot(options: ClaudeSnapshotOptions = {})
     });
     const auth = parseClaudeAuthStatus(stdout);
     const loggedIn = auth.loggedIn === true;
+    const quota = options.configRoot ? await readClaudeQuotaSnapshot(options.configRoot) : null;
+    const quotaWindows = quota?.quotaWindows ?? [];
+    const quotaLimited = quotaWindows.some((window) => window.usedPercent >= 100);
+    const source = quota && quotaWindows.length
+      ? { label: "Claude status-line", confidence: "provider-reported" as const, observedAt: quota.observedAt }
+      : { label: "Claude auth status", confidence: "local-observation" as const, observedAt };
 
     return {
       id,
       provider: "claude",
       displayName,
       plan: typeof auth.subscriptionType === "string" ? auth.subscriptionType : null,
-      state: loggedIn ? "ready" : "signed-out",
+      state: loggedIn ? (quotaLimited ? "limited" : "ready") : "signed-out",
       isActive: !isManaged,
       isManaged,
-      quotaWindows: [],
-      source: {
-        label: "Claude auth status",
-        confidence: "local-observation",
-        observedAt,
-      },
+      quotaWindows,
+      source,
       notice: loggedIn
-        ? "Claude confirms this account is connected, but its CLI does not expose subscription quota as structured data."
+        ? quotaWindows.length
+          ? "Last observed through Claude's official status-line event after a response. Additional weekly limits may apply."
+          : isManaged
+            ? "Connected. Launch this profile and complete one Claude response to capture its official quota windows."
+            : "Claude is connected. Add a managed QuotaDeck profile to enable official status-line quota capture."
         : "Sign in with Claude Code before this profile can be monitored.",
     };
   } catch {
