@@ -1,6 +1,7 @@
 import {
   Activity,
   ArrowRight,
+  ArrowUpCircle,
   Check,
   CircleHelp,
   LayoutDashboard,
@@ -25,6 +26,7 @@ import type {
   ProviderCapabilities,
   ProviderId,
   QuotaWindow,
+  UpdateReadyInfo,
 } from "../shared/contracts";
 import {
   loadPinnedIds,
@@ -1492,6 +1494,7 @@ export default function App() {
     null,
   );
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [updateReady, setUpdateReady] = useState<UpdateReadyInfo | null>(null);
   const [activeView, setActiveView] = useState<"overview" | "accounts">(
     "overview",
   );
@@ -1646,13 +1649,21 @@ export default function App() {
     [showToast],
   );
 
-  // Auto-update: when the desktop bridge reports a downloaded release, offer a
-  // one-click restart. Feature-detected, so the browser preview (no bridge) and
-  // tests (bridge mocks omit the method) simply skip it.
+  // Relaunch into the freshly-downloaded installer. Feature-detected so the
+  // browser preview and tests (bridge mocks omit the method) stay inert.
+  const installUpdate = useCallback(() => {
+    window.quotaMonitor?.installUpdate?.();
+  }, []);
+
+  // Auto-update: when the desktop bridge reports a downloaded release, raise a
+  // one-time arrival toast AND light a persistent topbar badge that survives the
+  // toast being dismissed — the durable "restart to update" affordance. Feature-
+  // detected, so the browser preview (no bridge) and tests simply skip it.
   useEffect(() => {
     const bridge = window.quotaMonitor;
     if (!bridge?.onUpdateDownloaded) return;
     return bridge.onUpdateDownloaded((info) => {
+      setUpdateReady(info);
       showToast(`QuotaDeck ${info.version} is ready to install.`, {
         action: {
           label: "Restart to install",
@@ -1803,6 +1814,22 @@ export default function App() {
             </strong>
           </div>
           <div className="topbar-actions">
+            {updateReady && (
+              <button
+                className="update-badge"
+                onClick={installUpdate}
+                title={`Restart QuotaDeck to install version ${updateReady.version}`}
+              >
+                <span className="update-badge-icon" aria-hidden="true">
+                  <ArrowUpCircle size={16} />
+                  <span className="update-badge-dot" />
+                </span>
+                <span className="update-badge-text">
+                  <strong>Update ready</strong>
+                  <small>Restart → {updateReady.version}</small>
+                </span>
+              </button>
+            )}
             {dashboard.mode === "demo" && (
               <span className="demo-badge">Preview data</span>
             )}
