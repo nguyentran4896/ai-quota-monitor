@@ -38,8 +38,8 @@ const providerMeta: Record<
   ProviderId,
   { mark: string; label: string; accent: string }
 > = {
-  claude: { mark: "A", label: "Claude", accent: "coral" },
-  codex: { mark: "O", label: "Codex", accent: "mint" },
+  claude: { mark: "A", label: "Claude", accent: "warm" },
+  codex: { mark: "O", label: "Codex", accent: "cool" },
 };
 
 function titleCase(value: string | null): string {
@@ -486,9 +486,8 @@ function AccountCard({
       {account.notice && <p className="account-notice">{account.notice}</p>}
 
       <div className="source-row">
-        <span>
-          <ShieldCheck size={14} /> {account.source.label}
-          <small>· {relativeTime(account.source.observedAt)}</small>
+        <span className="source-provenance">
+          {account.source.label} · {relativeTime(account.source.observedAt)}
         </span>
         <button
           type="button"
@@ -497,8 +496,8 @@ function AccountCard({
           aria-label={`Open official ${meta.label} usage instructions`}
         >
           {account.provider === "claude"
-            ? "Verify with /usage"
-            : "Verify in Settings → Usage"}
+            ? "Verify /usage"
+            : "Verify in Settings"}
         </button>
       </div>
 
@@ -1338,17 +1337,6 @@ function AccountsView({
     statusFilter,
   ]);
 
-  const recommended = useMemo(
-    () =>
-      (["claude", "codex"] as const)
-        .map((provider) => ({
-          provider,
-          account: recommendedAccountForProvider(accounts, provider),
-        }))
-        .filter((entry) => entry.account),
-    [accounts],
-  );
-
   return (
     <section className="accounts-view" aria-label="Account management">
       <div className="accounts-toolbar">
@@ -1415,21 +1403,6 @@ function AccountsView({
           </select>
         </label>
       </div>
-
-      {recommended.length > 0 && (
-        <div className="accounts-recommend" role="note">
-          <Sparkles size={16} aria-hidden="true" />
-          <p>
-            {recommended.map(({ provider, account }) => (
-              <span key={provider}>
-                <b>{providerMeta[provider].label}:</b> {account!.displayName}{" "}
-                has {Math.round(availablePercent(account!)!)}% free in its
-                tightest fresh subscription window.{" "}
-              </span>
-            ))}
-          </p>
-        </div>
-      )}
 
       <p className="accounts-count" role="status">
         Showing {visible.length} of {accounts.length}{" "}

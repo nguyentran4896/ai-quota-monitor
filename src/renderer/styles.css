@@ -561,30 +561,6 @@ button:focus-visible {
   letter-spacing: 0;
   font-weight: 500;
 }
-.accounts-recommend {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-left: 2px solid var(--accent);
-  border-radius: var(--radius-sm);
-  background: var(--paper);
-  color: var(--accent);
-}
-.accounts-recommend svg {
-  flex: 0 0 auto;
-  margin-top: 1px;
-}
-.accounts-recommend p {
-  margin: 0;
-  color: var(--ink-2);
-  font-size: 12px;
-  line-height: 1.5;
-}
-.accounts-recommend b {
-  color: var(--ink);
-}
 .accounts-count {
   margin: 0;
   color: var(--muted);
@@ -644,9 +620,10 @@ button:focus-visible {
   background: #edeae6;
   font: 700 16px var(--display);
 }
-/* Providers stay distinct with only a warm-vs-cool grey, no competing hues. */
-.accent-mint .provider-mark,
-.provider-mark.accent-mint {
+/* Providers stay distinct with only a warm-vs-cool grey, no competing hues.
+   Claude uses the default warm .provider-mark; Codex overrides to the cool grey. */
+.accent-cool .provider-mark,
+.provider-mark.accent-cool {
   background: #e6ebe9;
   color: #46524d;
 }
@@ -958,35 +935,35 @@ button:focus-visible {
 }
 .source-row {
   margin-top: auto;
-  padding-top: 15px;
+  padding-top: 12px;
   border-top: 1px solid var(--line);
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
+  gap: 10px;
   color: var(--faint);
-  font-size: 12px;
+  font-size: 11px;
 }
-.source-row span:first-child {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-.source-row small {
-  font-size: inherit;
+.source-provenance {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Secondary action: muted, not the reserved accent green, so the card's one
+   green moment stays the primary launch/setup control. */
 .usage-help-button {
+  flex: 0 0 auto;
   border: 0;
-  padding: 3px 0;
+  padding: 0;
   background: transparent;
-  color: var(--accent);
+  color: var(--muted);
   cursor: pointer;
-  font-size: 12px;
-  font-weight: 650;
-  text-align: right;
+  font-size: 11px;
+  font-weight: 500;
 }
 .usage-help-button:hover {
-  color: var(--accent-strong);
+  color: var(--ink-2);
   text-decoration: underline;
 }
 .usage-help-button:focus-visible {
