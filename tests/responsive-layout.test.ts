@@ -28,6 +28,14 @@ describe("responsive layout contract", () => {
     expect(css).toMatch(/\.account-safety-row\s*\{[^}]*flex-wrap:\s*wrap/);
   });
 
+  it("bounds the Accounts management list so large collections scroll internally", () => {
+    // Item 10: 12+ accounts must not push the toolbar off-screen — the list
+    // caps its height and scrolls on its own.
+    expect(css).toMatch(
+      /\.accounts-manage-list\s*\{[^}]*max-height:[^}]*overflow-y:\s*auto/s,
+    );
+  });
+
   it("drops the unreachable breakpoint below the 1040px window minimum", () => {
     // Electron's BrowserWindow minWidth is 1040px, so any max-width breakpoint
     // under it is dead code that must be reconciled away.

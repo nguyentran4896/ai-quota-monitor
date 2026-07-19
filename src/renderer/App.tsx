@@ -8,9 +8,12 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  Search,
   Settings,
   ShieldCheck,
   Sparkles,
+  Star,
+  StarOff,
   Trash2,
   Users,
   X,
@@ -24,6 +27,12 @@ import type {
   ProviderId,
   QuotaWindow,
 } from "../shared/contracts";
+import {
+  loadPinnedIds,
+  loadRecentIds,
+  recordRecent,
+  togglePinned,
+} from "./account-preferences";
 import { demoDashboard } from "./demo-data";
 
 const providerMeta: Record<
@@ -181,6 +190,18 @@ function accountStatus(account: AccountSnapshot): {
   return { tone: "warn", text: "Status unavailable" };
 }
 
+// A coarse, filterable category for the Accounts management destination.
+type AccountCategory = "ready" | "needs-setup" | "issue" | "attention";
+
+function accountCategory(account: AccountSnapshot): AccountCategory {
+  if (account.lifecycle === "provider-error") return "issue";
+  if (accountNeedsSetup(account)) return "needs-setup";
+  if (account.lifecycle === "verified" && account.state === "ready") {
+    return "ready";
+  }
+  return "attention";
+}
+
 function useModalDialog(onClose: () => void) {
   const dialogRef = useRef<HTMLElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(
@@ -279,15 +300,22 @@ function AccountCard({
   onRename,
   onVerifyUsage,
   ambiguous = false,
+  pinned,
+  onTogglePin,
+  onAction,
 }: {
   account: AccountSnapshot;
   onRemove: (account: AccountSnapshot) => Promise<void>;
   onRename: (account: AccountSnapshot) => void;
   onVerifyUsage: (provider: ProviderId) => Promise<void>;
   ambiguous?: boolean;
+  pinned?: boolean;
+  onTogglePin?: (account: AccountSnapshot) => void;
+  onAction?: (account: AccountSnapshot) => Promise<void>;
 }) {
   const meta = providerMeta[account.provider];
   const status = accountStatus(account);
+  const needsSetup = accountNeedsSetup(account);
 
   return (
     <article
@@ -314,6 +342,21 @@ function AccountCard({
             role="img"
             aria-label={`Status: ${status.text}`}
           />
+          {onTogglePin && (
+            <button
+              className={`pin-profile-button ${pinned ? "pinned" : ""}`}
+              onClick={() => onTogglePin(account)}
+              aria-label={
+                pinned
+                  ? `Unpin ${account.displayName}`
+                  : `Pin ${account.displayName}`
+              }
+              aria-pressed={pinned}
+              title={pinned ? "Unpin account" : "Pin account"}
+            >
+              {pinned ? <Star size={14} /> : <StarOff size={14} />}
+            </button>
+          )}
           {account.isManaged && (
             <button
               className="rename-profile-button"
@@ -412,6 +455,17 @@ function AccountCard({
             : "Verify in Settings → Usage"}
         </button>
       </div>
+
+      {onAction && (
+        <button
+          type="button"
+          className="card-primary-action"
+          onClick={() => void onAction(account)}
+        >
+          {needsSetup ? "Set up this account" : `Launch ${meta.label} session`}
+          <ArrowRight size={15} />
+        </button>
+      )}
     </article>
   );
 }
@@ -1099,6 +1153,238 @@ function ToastRegion({
   );
 }
 
+type ProviderFilter = "all" | ProviderId;
+type StatusFilter = "all" | "ready" | "needs-setup" | "issue";
+type AccountSort = "recommended" | "name" | "provider" | "recent";
+
+const statusFilterLabels: Record<StatusFilter, string> = {
+  all: "All statuses",
+  ready: "Ready",
+  "needs-setup": "Needs setup",
+  issue: "Needs attention",
+};
+
+const sortLabels: Record<AccountSort, string> = {
+  recommended: "Recommended",
+  name: "Name (A–Z)",
+  provider: "Provider",
+  recent: "Recently used",
+};
+
+// The Accounts management destination: a searchable, filterable, sortable list
+// that scales to large collections. Pinned accounts always float to the top;
+// the rest follow the chosen sort. Bounded scrolling keeps 12+ accounts usable.
+function AccountsView({
+  accounts,
+  pinnedIds,
+  recentIds,
+  ambiguousLabelKeys,
+  onAction,
+  onRemove,
+  onRename,
+  onVerifyUsage,
+  onTogglePin,
+}: {
+  accounts: AccountSnapshot[];
+  pinnedIds: Set<string>;
+  recentIds: string[];
+  ambiguousLabelKeys: Set<string>;
+  onAction: (account: AccountSnapshot) => Promise<void>;
+  onRemove: (account: AccountSnapshot) => Promise<void>;
+  onRename: (account: AccountSnapshot) => void;
+  onVerifyUsage: (provider: ProviderId) => Promise<void>;
+  onTogglePin: (account: AccountSnapshot) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [providerFilter, setProviderFilter] = useState<ProviderFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [sort, setSort] = useState<AccountSort>("recommended");
+
+  const recentRank = useMemo(() => {
+    const rank = new Map<string, number>();
+    recentIds.forEach((id, index) => rank.set(id, index));
+    return rank;
+  }, [recentIds]);
+
+  const visible = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase();
+    const matches = accounts.filter((account) => {
+      if (providerFilter !== "all" && account.provider !== providerFilter) {
+        return false;
+      }
+      if (statusFilter !== "all" && accountCategory(account) !== statusFilter) {
+        return false;
+      }
+      if (!needle) return true;
+      const haystack = [
+        account.displayName,
+        account.identity ?? "",
+        providerMeta[account.provider].label,
+      ]
+        .join(" ")
+        .toLocaleLowerCase();
+      return haystack.includes(needle);
+    });
+
+    const byName = (left: AccountSnapshot, right: AccountSnapshot) =>
+      left.displayName.localeCompare(right.displayName);
+    const compare = (left: AccountSnapshot, right: AccountSnapshot): number => {
+      // Pins win regardless of the chosen sort, so favorites stay reachable.
+      const leftPinned = pinnedIds.has(left.id) ? 0 : 1;
+      const rightPinned = pinnedIds.has(right.id) ? 0 : 1;
+      if (leftPinned !== rightPinned) return leftPinned - rightPinned;
+      if (sort === "name") return byName(left, right);
+      if (sort === "provider") {
+        return (
+          left.provider.localeCompare(right.provider) || byName(left, right)
+        );
+      }
+      if (sort === "recent") {
+        const leftRank = recentRank.get(left.id) ?? Number.POSITIVE_INFINITY;
+        const rightRank = recentRank.get(right.id) ?? Number.POSITIVE_INFINITY;
+        if (leftRank !== rightRank) return leftRank - rightRank;
+        return byName(left, right);
+      }
+      // Recommended: most available fresh subscription runway first.
+      const leftAvailable = availablePercent(left) ?? -1;
+      const rightAvailable = availablePercent(right) ?? -1;
+      if (leftAvailable !== rightAvailable)
+        return rightAvailable - leftAvailable;
+      return byName(left, right);
+    };
+    return [...matches].sort(compare);
+  }, [
+    accounts,
+    pinnedIds,
+    providerFilter,
+    query,
+    recentRank,
+    sort,
+    statusFilter,
+  ]);
+
+  const recommended = useMemo(
+    () =>
+      (["claude", "codex"] as const)
+        .map((provider) => ({
+          provider,
+          account: recommendedAccountForProvider(accounts, provider),
+        }))
+        .filter((entry) => entry.account),
+    [accounts],
+  );
+
+  return (
+    <section className="accounts-view" aria-label="Account management">
+      <div className="accounts-toolbar">
+        <div className="accounts-search">
+          <Search size={15} aria-hidden="true" />
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.currentTarget.value)}
+            placeholder="Search by name, identity, or provider"
+            aria-label="Search accounts"
+          />
+        </div>
+        <label className="accounts-filter">
+          <span>Provider</span>
+          <select
+            aria-label="Filter by provider"
+            value={providerFilter}
+            onChange={(event) =>
+              setProviderFilter(event.currentTarget.value as ProviderFilter)
+            }
+          >
+            <option value="all">All providers</option>
+            <option value="claude">Claude</option>
+            <option value="codex">Codex</option>
+          </select>
+        </label>
+        <label className="accounts-filter">
+          <span>Status</span>
+          <select
+            aria-label="Filter by status"
+            value={statusFilter}
+            onChange={(event) =>
+              setStatusFilter(event.currentTarget.value as StatusFilter)
+            }
+          >
+            {(Object.keys(statusFilterLabels) as StatusFilter[]).map(
+              (value) => (
+                <option key={value} value={value}>
+                  {statusFilterLabels[value]}
+                </option>
+              ),
+            )}
+          </select>
+        </label>
+        <label className="accounts-filter">
+          <span>Sort</span>
+          <select
+            aria-label="Sort accounts"
+            value={sort}
+            onChange={(event) =>
+              setSort(event.currentTarget.value as AccountSort)
+            }
+          >
+            {(Object.keys(sortLabels) as AccountSort[]).map((value) => (
+              <option key={value} value={value}>
+                {sortLabels[value]}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {recommended.length > 0 && (
+        <div className="accounts-recommend" role="note">
+          <Sparkles size={16} aria-hidden="true" />
+          <p>
+            {recommended.map(({ provider, account }) => (
+              <span key={provider}>
+                <b>{providerMeta[provider].label}:</b> {account!.displayName}{" "}
+                has {Math.round(availablePercent(account!)!)}% free in its
+                tightest fresh subscription window.{" "}
+              </span>
+            ))}
+          </p>
+        </div>
+      )}
+
+      <p className="accounts-count" role="status">
+        Showing {visible.length} of {accounts.length}{" "}
+        {accounts.length === 1 ? "account" : "accounts"}
+        {pinnedIds.size > 0 && ` · ${pinnedIds.size} pinned`}
+      </p>
+
+      {visible.length === 0 ? (
+        <div className="accounts-empty">
+          <p>No accounts match your search or filters.</p>
+        </div>
+      ) : (
+        <div className="accounts-manage-list">
+          {visible.map((account) => (
+            <AccountCard
+              key={account.id}
+              account={account}
+              onRemove={onRemove}
+              onRename={onRename}
+              onVerifyUsage={onVerifyUsage}
+              onAction={onAction}
+              pinned={pinnedIds.has(account.id)}
+              onTogglePin={onTogglePin}
+              ambiguous={ambiguousLabelKeys.has(
+                `${account.provider}:${account.displayName.trim().toLocaleLowerCase()}`,
+              )}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function App() {
   const [dashboard, setDashboard] = useState<DashboardSnapshot | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -1109,6 +1395,13 @@ export default function App() {
     null,
   );
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [activeView, setActiveView] = useState<"overview" | "accounts">(
+    "overview",
+  );
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(() =>
+    loadPinnedIds(),
+  );
+  const [recentIds, setRecentIds] = useState<string[]>(() => loadRecentIds());
 
   const showToast = useCallback(
     (message: string, options: Partial<Omit<ToastState, "message">> = {}) => {
@@ -1147,9 +1440,15 @@ export default function App() {
         return;
       }
       try {
-        const result = accountNeedsSetup(account)
+        const isSetup = accountNeedsSetup(account);
+        const result = isSetup
           ? await bridge.beginLogin(account.id)
           : await bridge.launchProfile(account.id);
+        // Only a real launch counts as "recently used" — a setup handoff does
+        // not, so the recent list reflects working sessions.
+        if (!isSetup && result.ok) {
+          setRecentIds(recordRecent(account.id));
+        }
         showToast(`${account.displayName}: ${result.message}`, {
           tone: result.ok ? "info" : "error",
           // Offer a direct fix when the provider CLI is the blocker.
@@ -1194,6 +1493,10 @@ export default function App() {
 
   const handleRenameProfile = useCallback((account: AccountSnapshot) => {
     setRenameTarget(account);
+  }, []);
+
+  const handleTogglePin = useCallback((account: AccountSnapshot) => {
+    setPinnedIds(togglePinned(account.id));
   }, []);
 
   const handleEvidence = useCallback(async () => {
@@ -1323,10 +1626,18 @@ export default function App() {
           </div>
         </div>
         <nav aria-label="Main navigation">
-          <button className="nav-item active">
+          <button
+            className={`nav-item ${activeView === "overview" ? "active" : ""}`}
+            aria-current={activeView === "overview" ? "page" : undefined}
+            onClick={() => setActiveView("overview")}
+          >
             <LayoutDashboard size={18} /> Overview
           </button>
-          <button className="nav-item" onClick={() => setShowAddProfile(true)}>
+          <button
+            className={`nav-item ${activeView === "accounts" ? "active" : ""}`}
+            aria-current={activeView === "accounts" ? "page" : undefined}
+            onClick={() => setActiveView("accounts")}
+          >
             <Users size={18} /> Accounts{" "}
             <span>{dashboard.accounts.length}</span>
           </button>
@@ -1368,7 +1679,9 @@ export default function App() {
           <div className="breadcrumb">
             <span>Workspace</span>
             <i>/</i>
-            <strong>Overview</strong>
+            <strong>
+              {activeView === "accounts" ? "Accounts" : "Overview"}
+            </strong>
           </div>
           <div className="topbar-actions">
             {dashboard.mode === "demo" && (
@@ -1392,98 +1705,138 @@ export default function App() {
         </header>
 
         <div className="content-wrap">
-          <section className="hero-row">
-            <div>
-              <span className="eyebrow hero-eyebrow">
-                <Sparkles size={14} /> Live workspace
-              </span>
-              <h1>
-                Your AI runway,
-                <br />
-                <em>at a glance.</em>
-              </h1>
-              <p>
-                Know what is available, what resets next, and which account is
-                ready for work.
-              </p>
-            </div>
-            <div className="summary-card">
-              <div className="summary-icon">
-                <Gauge size={22} />
-              </div>
-              <div className="summary-stat">
-                <strong>
-                  {summary.ready}/{summary.total}
-                </strong>
-                <span>accounts ready</span>
-              </div>
-              <div className="summary-divider" />
-              <div className="summary-stat compact">
-                <strong>{summary.reportedWindows}</strong>
-                <span>reported windows</span>
-              </div>
-            </div>
-          </section>
-
-          {error && (
-            <div className="error-banner" role="alert">
-              {error} Showing safe preview data.
-            </div>
-          )}
-
-          <section className="workspace-grid">
-            <div className="accounts-section">
-              <div className="section-heading">
+          {activeView === "overview" ? (
+            <>
+              <section className="hero-row">
                 <div>
-                  <span className="eyebrow">Connected accounts</span>
-                  <h2>Quota overview</h2>
+                  <span className="eyebrow hero-eyebrow">
+                    <Sparkles size={14} /> Live workspace
+                  </span>
+                  <h1>
+                    Your AI runway,
+                    <br />
+                    <em>at a glance.</em>
+                  </h1>
+                  <p>
+                    Know what is available, what resets next, and which account
+                    is ready for work.
+                  </p>
+                </div>
+                <div className="summary-card">
+                  <div className="summary-icon">
+                    <Gauge size={22} />
+                  </div>
+                  <div className="summary-stat">
+                    <strong>
+                      {summary.ready}/{summary.total}
+                    </strong>
+                    <span>accounts ready</span>
+                  </div>
+                  <div className="summary-divider" />
+                  <div className="summary-stat compact">
+                    <strong>{summary.reportedWindows}</strong>
+                    <span>reported windows</span>
+                  </div>
+                </div>
+              </section>
+
+              {error && (
+                <div className="error-banner" role="alert">
+                  {error} Showing safe preview data.
+                </div>
+              )}
+
+              <section className="workspace-grid">
+                <div className="accounts-section">
+                  <div className="section-heading">
+                    <div>
+                      <span className="eyebrow">Connected accounts</span>
+                      <h2>Quota overview</h2>
+                    </div>
+                    <span className="last-updated">
+                      Updated {relativeTime(dashboard.observedAt)}
+                    </span>
+                  </div>
+                  <div className="account-grid">
+                    {dashboard.accounts.map((account) => (
+                      <AccountCard
+                        key={account.id}
+                        account={account}
+                        onRemove={handleRemoveProfile}
+                        onRename={handleRenameProfile}
+                        onVerifyUsage={handleProviderUsage}
+                        pinned={pinnedIds.has(account.id)}
+                        onTogglePin={handleTogglePin}
+                        ambiguous={ambiguousLabelKeys.has(
+                          `${account.provider}:${account.displayName.trim().toLocaleLowerCase()}`,
+                        )}
+                      />
+                    ))}
+                  </div>
+                  <div className="insight-strip">
+                    <span className="insight-icon">
+                      <Sparkles size={17} />
+                    </span>
+                    <div>
+                      <strong>Best verified runway by provider</strong>
+                      <div className="provider-recommendations">
+                        {recommendations.map(({ provider, account }) => (
+                          <p key={provider}>
+                            <b>{providerMeta[provider].label}:</b>{" "}
+                            {account && availablePercent(account) !== null
+                              ? `${account.displayName} has ${Math.round(availablePercent(account)!)}% available in its tightest fresh window.`
+                              : "No fresh subscription quota is available."}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                    <button onClick={() => void handleEvidence()}>
+                      View evidence <ArrowRight size={15} />
+                    </button>
+                  </div>
+                </div>
+                <SmartSwitcher
+                  accounts={dashboard.accounts}
+                  onAction={handleProfileAction}
+                  shortcutModifier={dashboard.platform.shortcutModifier}
+                />
+              </section>
+            </>
+          ) : (
+            <>
+              <section className="section-heading accounts-heading">
+                <div>
+                  <span className="eyebrow">Manage</span>
+                  <h1>Accounts</h1>
+                  <p>
+                    Search, filter, pin, set up, verify, launch, or safely
+                    remove every connected account.
+                  </p>
                 </div>
                 <span className="last-updated">
                   Updated {relativeTime(dashboard.observedAt)}
                 </span>
-              </div>
-              <div className="account-grid">
-                {dashboard.accounts.map((account) => (
-                  <AccountCard
-                    key={account.id}
-                    account={account}
-                    onRemove={handleRemoveProfile}
-                    onRename={handleRenameProfile}
-                    onVerifyUsage={handleProviderUsage}
-                    ambiguous={ambiguousLabelKeys.has(
-                      `${account.provider}:${account.displayName.trim().toLocaleLowerCase()}`,
-                    )}
-                  />
-                ))}
-              </div>
-              <div className="insight-strip">
-                <span className="insight-icon">
-                  <Sparkles size={17} />
-                </span>
-                <div>
-                  <strong>Best verified runway by provider</strong>
-                  <div className="provider-recommendations">
-                    {recommendations.map(({ provider, account }) => (
-                      <p key={provider}>
-                        <b>{providerMeta[provider].label}:</b>{" "}
-                        {account && availablePercent(account) !== null
-                          ? `${account.displayName} has ${Math.round(availablePercent(account)!)}% available in its tightest fresh window.`
-                          : "No fresh subscription quota is available."}
-                      </p>
-                    ))}
-                  </div>
+              </section>
+
+              {error && (
+                <div className="error-banner" role="alert">
+                  {error} Showing safe preview data.
                 </div>
-                <button onClick={() => void handleEvidence()}>
-                  View evidence <ArrowRight size={15} />
-                </button>
-              </div>
-            </div>
-            <SmartSwitcher
-              accounts={dashboard.accounts}
-              onAction={handleProfileAction}
-              shortcutModifier={dashboard.platform.shortcutModifier}
-            />
-          </section>
+              )}
+
+              <AccountsView
+                accounts={dashboard.accounts}
+                pinnedIds={pinnedIds}
+                recentIds={recentIds}
+                ambiguousLabelKeys={ambiguousLabelKeys}
+                onAction={handleProfileAction}
+                onRemove={handleRemoveProfile}
+                onRename={handleRenameProfile}
+                onVerifyUsage={handleProviderUsage}
+                onTogglePin={handleTogglePin}
+              />
+            </>
+          )}
         </div>
       </main>
       {showAddProfile && (

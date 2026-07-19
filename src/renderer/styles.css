@@ -435,6 +435,112 @@ button:focus-visible {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 15px;
 }
+.accounts-heading {
+  align-items: flex-start;
+}
+.accounts-heading h1 {
+  margin: 6px 0 6px;
+  color: #263732;
+  font:
+    600 24px "Segoe UI Variable Display",
+    "Segoe UI",
+    sans-serif;
+  letter-spacing: -0.03em;
+}
+.accounts-heading p {
+  max-width: 52ch;
+  margin: 0;
+  color: #606e68;
+  font-size: 13px;
+}
+.accounts-view {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+.accounts-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.accounts-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 260px;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid #deded7;
+  border-radius: 10px;
+  background: var(--paper);
+  color: #8a908d;
+}
+.accounts-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: #263732;
+  font-size: 13px;
+}
+.accounts-search input:focus {
+  outline: none;
+}
+.accounts-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: #929895;
+}
+.accounts-filter select {
+  padding: 7px 9px;
+  border: 1px solid #deded7;
+  border-radius: 9px;
+  background: var(--paper);
+  color: #263732;
+  font-size: 12px;
+}
+.accounts-recommend {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #e2ede7;
+  border-radius: 12px;
+  background: #f2f8f4;
+  color: #2c765d;
+}
+.accounts-recommend p {
+  margin: 0;
+  color: #37564b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.accounts-count {
+  margin: 0;
+  color: #808984;
+  font-size: 12px;
+}
+.accounts-empty {
+  padding: 34px;
+  border: 1px dashed #d3d3ca;
+  border-radius: 12px;
+  text-align: center;
+  color: #808984;
+}
+/* Bounded scrolling so 12+ accounts stay usable without pushing the toolbar
+   off-screen. The container caps its height and scrolls internally. */
+.accounts-manage-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 15px;
+  max-height: calc(100vh - 320px);
+  min-height: 200px;
+  overflow-y: auto;
+  padding: 2px 4px 4px 2px;
+}
 .account-card {
   position: relative;
   min-height: 307px;
@@ -533,7 +639,8 @@ button:focus-visible {
   flex: 0 0 auto;
 }
 .rename-profile-button,
-.remove-profile-button {
+.remove-profile-button,
+.pin-profile-button {
   width: 28px;
   height: 28px;
   flex: 0 0 auto;
@@ -552,6 +659,32 @@ button:focus-visible {
 .remove-profile-button:hover {
   background: #fff0e9;
   color: #a44e34;
+}
+.pin-profile-button:hover {
+  background: #fff6e6;
+  color: #b7791f;
+}
+.pin-profile-button.pinned {
+  color: #d69e2e;
+}
+.card-primary-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: #263732;
+  color: #f6f5ef;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.card-primary-action:hover {
+  background: #1c2925;
 }
 .provider-live-dot {
   width: 8px;
