@@ -1,9 +1,10 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 import type {
   AddProfileInput,
   AlertThreshold,
   ProviderId,
   QuotaMonitorBridge,
+  UpdateReadyInfo,
 } from "../shared/contracts";
 
 const bridge: QuotaMonitorBridge = Object.freeze({
@@ -32,6 +33,16 @@ const bridge: QuotaMonitorBridge = Object.freeze({
   openProviderUsage: (provider: ProviderId) =>
     ipcRenderer.invoke("usage:open", provider),
   openEvidence: () => ipcRenderer.invoke("evidence:open"),
+  onUpdateDownloaded: (listener: (info: UpdateReadyInfo) => void) => {
+    const channel = "updates:downloaded";
+    const handler = (_event: IpcRendererEvent, info: UpdateReadyInfo) =>
+      listener(info);
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.removeListener(channel, handler);
+  },
+  installUpdate: () => {
+    void ipcRenderer.invoke("updates:install");
+  },
 });
 
 contextBridge.exposeInMainWorld("quotaMonitor", bridge);

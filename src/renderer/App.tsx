@@ -1601,6 +1601,22 @@ export default function App() {
     [showToast],
   );
 
+  // Auto-update: when the desktop bridge reports a downloaded release, offer a
+  // one-click restart. Feature-detected, so the browser preview (no bridge) and
+  // tests (bridge mocks omit the method) simply skip it.
+  useEffect(() => {
+    const bridge = window.quotaMonitor;
+    if (!bridge?.onUpdateDownloaded) return;
+    return bridge.onUpdateDownloaded((info) => {
+      showToast(`QuotaDeck ${info.version} is ready to install.`, {
+        action: {
+          label: "Restart to install",
+          run: () => bridge.installUpdate?.(),
+        },
+      });
+    });
+  }, [showToast]);
+
   useEffect(() => {
     void loadDashboard();
     let timer: number | null = null;
