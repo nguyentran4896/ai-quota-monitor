@@ -1,9 +1,9 @@
 import {
   Activity,
   ArrowRight,
+  ArrowUpCircle,
   Check,
   CircleHelp,
-  Gauge,
   LayoutDashboard,
   Pencil,
   Plus,
@@ -26,6 +26,7 @@ import type {
   ProviderCapabilities,
   ProviderId,
   QuotaWindow,
+  UpdateReadyInfo,
 } from "../shared/contracts";
 import {
   loadPinnedIds,
@@ -35,13 +36,56 @@ import {
 } from "./account-preferences";
 import { demoDashboard } from "./demo-data";
 
-const providerMeta: Record<
-  ProviderId,
-  { mark: string; label: string; accent: string }
-> = {
-  claude: { mark: "A", label: "Claude", accent: "coral" },
-  codex: { mark: "O", label: "Codex", accent: "mint" },
+const providerMeta: Record<ProviderId, { label: string; accent: string }> = {
+  claude: { label: "Claude", accent: "warm" },
+  codex: { label: "Codex", accent: "cool" },
 };
+
+// Provider identity glyphs (AXIS 1 "who"): original geometric marks, not the
+// trademarked Anthropic/OpenAI logos. Claude = a radial spark; Codex = an
+// interlaced hex blossom. Drawn with currentColor so the accent-* class sets
+// the hue (coral for Claude, ink for Codex). aria-hidden: the account name and
+// aria-labels already announce the provider, so the mark is decorative.
+function ProviderGlyph({ provider }: { provider: ProviderId }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      {provider === "claude" ? (
+        <>
+          <circle cx="12" cy="12" r="2.3" fill="currentColor" />
+          <path fill="currentColor" d="M12 2 L13.25 9.2 L10.75 9.2 Z" />
+          <path fill="currentColor" d="M22 12 L14.8 13.25 L14.8 10.75 Z" />
+          <path fill="currentColor" d="M12 22 L10.75 14.8 L13.25 14.8 Z" />
+          <path fill="currentColor" d="M2 12 L9.2 10.75 L9.2 13.25 Z" />
+          <path
+            fill="currentColor"
+            d="M16.81 7.19 L14.69 10.73 L13.27 9.31 Z"
+          />
+          <path
+            fill="currentColor"
+            d="M16.81 16.81 L13.27 14.69 L14.69 13.27 Z"
+          />
+          <path
+            fill="currentColor"
+            d="M7.19 16.81 L9.31 13.27 L10.73 14.69 Z"
+          />
+          <path fill="currentColor" d="M7.19 7.19 L10.73 9.31 L9.31 10.73 Z" />
+        </>
+      ) : (
+        <g
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        >
+          <path d="M12 3 L19.79 7.5 L19.79 16.5 L12 21 L4.21 16.5 L4.21 7.5 Z" />
+          <path d="M18 12 L15 6.8 L9 6.8 L6 12 L9 17.2 L15 17.2 Z" />
+          <path d="M18 12 L19.79 12 M15 6.8 L15.9 5.25 M9 6.8 L8.1 5.25 M6 12 L4.21 12 M9 17.2 L8.1 18.75 M15 17.2 L15.9 18.75" />
+        </g>
+      )}
+    </svg>
+  );
+}
 
 function titleCase(value: string | null): string {
   if (!value) return "Plan unknown";
@@ -269,6 +313,15 @@ function useModalDialog(onClose: () => void) {
   return dialogRef;
 }
 
+// The signature instrument: a radial ring dial reading available runway as a
+// fuel gauge. The tabular percentage in the center is the one confident moment
+// per window; the fill turns amber/clay only when the tank runs critically low.
+// Geometry is a plain SVG donut; the accessible progressbar name is unchanged.
+const GAUGE_SIZE = 92;
+const GAUGE_STROKE = 9;
+const GAUGE_RADIUS = (GAUGE_SIZE - GAUGE_STROKE) / 2;
+const GAUGE_CIRCUMFERENCE = 2 * Math.PI * GAUGE_RADIUS;
+
 function QuotaMeter({
   window,
   accountName,
@@ -278,17 +331,12 @@ function QuotaMeter({
 }) {
   const available = Math.max(0, Math.round(100 - window.usedPercent));
   const used = Math.round(window.usedPercent);
+  const tone = available <= 10 ? "crit" : available <= 25 ? "low" : "ok";
+  const center = GAUGE_SIZE / 2;
   return (
     <div className="quota-meter">
-      <div className="meter-heading">
-        <div>
-          <span className="meter-value">{available}%</span>
-          <span className="meter-caption"> available</span>
-        </div>
-        <span className="meter-window">{window.label}</span>
-      </div>
       <div
-        className="meter-track"
+        className="gauge"
         role="progressbar"
         aria-valuemin={0}
         aria-valuemax={100}
@@ -297,11 +345,43 @@ function QuotaMeter({
           window.resetsAt,
         )}`}
       >
-        <span style={{ width: `${available}%` }} />
+        <svg
+          className="gauge-svg"
+          viewBox={`0 0 ${GAUGE_SIZE} ${GAUGE_SIZE}`}
+          aria-hidden="true"
+          focusable="false"
+        >
+          <circle
+            className="gauge-track"
+            cx={center}
+            cy={center}
+            r={GAUGE_RADIUS}
+            fill="none"
+            strokeWidth={GAUGE_STROKE}
+          />
+          <circle
+            className={`gauge-fill gauge-fill-${tone}`}
+            cx={center}
+            cy={center}
+            r={GAUGE_RADIUS}
+            fill="none"
+            strokeWidth={GAUGE_STROKE}
+            strokeLinecap="round"
+            strokeDasharray={`${(available / 100) * GAUGE_CIRCUMFERENCE} ${GAUGE_CIRCUMFERENCE}`}
+            transform={`rotate(-90 ${center} ${center})`}
+          />
+        </svg>
+        <div className="gauge-readout">
+          <span className="gauge-value">
+            {available}
+            <i>%</i>
+          </span>
+          <span className="gauge-caption">available</span>
+        </div>
       </div>
-      <div className="meter-footer">
-        <span>{used}% used</span>
-        <span>{resetLabel(window.resetsAt)}</span>
+      <div className="gauge-meta">
+        <span className="meter-window">{window.label}</span>
+        <span className="meter-reset">{resetLabel(window.resetsAt)}</span>
       </div>
     </div>
   );
@@ -337,9 +417,10 @@ function AccountCard({
     >
       <div className="account-card-top">
         <div className="provider-identity">
-          <span className="provider-mark">{meta.mark}</span>
+          <span className="provider-mark">
+            <ProviderGlyph provider={account.provider} />
+          </span>
           <div className="provider-identity-text">
-            <div className="eyebrow">{meta.label}</div>
             <h3>{account.displayName}</h3>
             {ambiguous && (
               <span className="account-disambiguator">
@@ -393,36 +474,35 @@ function AccountCard({
         </div>
       </div>
 
+      <div className="account-safety-row">
+        <span className="account-identity">
+          <span className="ident-label">Identity</span>
+          <span className="ident-value">
+            {account.identity ?? "Not reported"}
+          </span>
+        </span>
+        {account.isManaged && (
+          <small className={account.identityVerified ? "verified" : "pending"}>
+            {account.identityVerified ? "Verified" : "Verify before launch"}
+          </small>
+        )}
+      </div>
+
       <div className="account-meta-row">
-        <span className={`status-pill status-${account.quotaStatus}`}>
-          <i />{" "}
+        <span className="card-tag">{titleCase(account.plan)}</span>
+        <span className="card-tag">{authModeLabels[account.authMode]}</span>
+        {account.billingMode !== "subscription" && (
+          <span className="card-tag tone-warn">
+            {billingModeLabels[account.billingMode]}
+          </span>
+        )}
+        <span
+          className={`card-tag ${account.state === "limited" ? "tone-warn" : ""}`}
+        >
           {account.state === "limited"
             ? "Limited"
             : quotaStatusLabels[account.quotaStatus]}
         </span>
-        <span className="plan-pill">{titleCase(account.plan)}</span>
-      </div>
-
-      <div className="account-safety-row">
-        <span>
-          <strong>Identity</strong> {account.identity ?? "Not reported"}
-          {account.isManaged && (
-            <small
-              className={account.identityVerified ? "verified" : "pending"}
-            >
-              {account.identityVerified ? " Verified" : " Verify before launch"}
-            </small>
-          )}
-        </span>
-        <span className="account-mode-pills">
-          <span className="auth-pill">{authModeLabels[account.authMode]}</span>
-          <span className={`billing-pill billing-${account.billingMode}`}>
-            {billingModeLabels[account.billingMode]}
-          </span>
-        </span>
-      </div>
-      <div className="profile-scope">
-        Workspace: {account.isManaged ? "Isolated profile" : "Current CLI home"}
       </div>
 
       {account.quotaWindows.length ? (
@@ -453,9 +533,8 @@ function AccountCard({
       {account.notice && <p className="account-notice">{account.notice}</p>}
 
       <div className="source-row">
-        <span>
-          <ShieldCheck size={14} /> {account.source.label}
-          <small>· {relativeTime(account.source.observedAt)}</small>
+        <span className="source-provenance">
+          {account.source.label} · {relativeTime(account.source.observedAt)}
         </span>
         <button
           type="button"
@@ -464,8 +543,8 @@ function AccountCard({
           aria-label={`Open official ${meta.label} usage instructions`}
         >
           {account.provider === "claude"
-            ? "Verify with /usage"
-            : "Verify in Settings → Usage"}
+            ? "Verify /usage"
+            : "Verify in Settings"}
         </button>
       </div>
 
@@ -590,7 +669,7 @@ function SmartSwitcher({
               tabIndex={isSelected ? 0 : -1}
             >
               <span className={`provider-mark small accent-${meta.accent}`}>
-                {meta.mark}
+                <ProviderGlyph provider={account.provider} />
               </span>
               <span className="switcher-copy">
                 <strong>{account.displayName}</strong>
@@ -717,7 +796,7 @@ function AddProfileDialog({
                   <span
                     className={`provider-mark small accent-${providerMeta[value].accent}`}
                   >
-                    {providerMeta[value].mark}
+                    <ProviderGlyph provider={value} />
                   </span>
                   {providerMeta[value].label}
                   {provider === value && <Check size={14} />}
@@ -1305,17 +1384,6 @@ function AccountsView({
     statusFilter,
   ]);
 
-  const recommended = useMemo(
-    () =>
-      (["claude", "codex"] as const)
-        .map((provider) => ({
-          provider,
-          account: recommendedAccountForProvider(accounts, provider),
-        }))
-        .filter((entry) => entry.account),
-    [accounts],
-  );
-
   return (
     <section className="accounts-view" aria-label="Account management">
       <div className="accounts-toolbar">
@@ -1383,21 +1451,6 @@ function AccountsView({
         </label>
       </div>
 
-      {recommended.length > 0 && (
-        <div className="accounts-recommend" role="note">
-          <Sparkles size={16} aria-hidden="true" />
-          <p>
-            {recommended.map(({ provider, account }) => (
-              <span key={provider}>
-                <b>{providerMeta[provider].label}:</b> {account!.displayName}{" "}
-                has {Math.round(availablePercent(account!)!)}% free in its
-                tightest fresh subscription window.{" "}
-              </span>
-            ))}
-          </p>
-        </div>
-      )}
-
       <p className="accounts-count" role="status">
         Showing {visible.length} of {accounts.length}{" "}
         {accounts.length === 1 ? "account" : "accounts"}
@@ -1441,6 +1494,7 @@ export default function App() {
     null,
   );
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [updateReady, setUpdateReady] = useState<UpdateReadyInfo | null>(null);
   const [activeView, setActiveView] = useState<"overview" | "accounts">(
     "overview",
   );
@@ -1595,6 +1649,30 @@ export default function App() {
     [showToast],
   );
 
+  // Relaunch into the freshly-downloaded installer. Feature-detected so the
+  // browser preview and tests (bridge mocks omit the method) stay inert.
+  const installUpdate = useCallback(() => {
+    window.quotaMonitor?.installUpdate?.();
+  }, []);
+
+  // Auto-update: when the desktop bridge reports a downloaded release, raise a
+  // one-time arrival toast AND light a persistent topbar badge that survives the
+  // toast being dismissed — the durable "restart to update" affordance. Feature-
+  // detected, so the browser preview (no bridge) and tests simply skip it.
+  useEffect(() => {
+    const bridge = window.quotaMonitor;
+    if (!bridge?.onUpdateDownloaded) return;
+    return bridge.onUpdateDownloaded((info) => {
+      setUpdateReady(info);
+      showToast(`QuotaDeck ${info.version} is ready to install.`, {
+        action: {
+          label: "Restart to install",
+          run: () => bridge.installUpdate?.(),
+        },
+      });
+    });
+  }, [showToast]);
+
   useEffect(() => {
     void loadDashboard();
     let timer: number | null = null;
@@ -1736,6 +1814,22 @@ export default function App() {
             </strong>
           </div>
           <div className="topbar-actions">
+            {updateReady && (
+              <button
+                className="update-badge"
+                onClick={installUpdate}
+                title={`Restart QuotaDeck to install version ${updateReady.version}`}
+              >
+                <span className="update-badge-icon" aria-hidden="true">
+                  <ArrowUpCircle size={16} />
+                  <span className="update-badge-dot" />
+                </span>
+                <span className="update-badge-text">
+                  <strong>Update ready</strong>
+                  <small>Restart → {updateReady.version}</small>
+                </span>
+              </button>
+            )}
             {dashboard.mode === "demo" && (
               <span className="demo-badge">Preview data</span>
             )}
@@ -1775,19 +1869,29 @@ export default function App() {
                   </p>
                 </div>
                 <div className="summary-card">
-                  <div className="summary-icon">
-                    <Gauge size={22} />
-                  </div>
-                  <div className="summary-stat">
-                    <strong>
-                      {summary.ready}/{summary.total}
-                    </strong>
-                    <span>accounts ready</span>
+                  <div className="summary-block">
+                    <span className="summary-figure">
+                      {summary.ready}
+                      <i>/{summary.total}</i>
+                    </span>
+                    <span className="summary-label">accounts ready</span>
+                    <div className="readiness-track" aria-hidden="true">
+                      {dashboard.accounts.map((account) => (
+                        <span
+                          key={account.id}
+                          className={`readiness-seg ${
+                            account.state === "ready" ? "on" : ""
+                          }`}
+                        />
+                      ))}
+                    </div>
                   </div>
                   <div className="summary-divider" />
-                  <div className="summary-stat compact">
-                    <strong>{summary.reportedWindows}</strong>
-                    <span>reported windows</span>
+                  <div className="summary-block compact">
+                    <span className="summary-figure sm">
+                      {summary.reportedWindows}
+                    </span>
+                    <span className="summary-label">reported windows</span>
                   </div>
                 </div>
               </section>

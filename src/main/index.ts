@@ -1,15 +1,18 @@
 import {
   app,
   BrowserWindow,
+  ipcMain,
   type IpcMainInvokeEvent,
   Menu,
   nativeImage,
   Notification,
   Tray,
 } from "electron";
+import { autoUpdater } from "electron-updater";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { registerIpcHandlers } from "./ipc/register-ipc-handlers";
+import { AutoUpdateService } from "./services/auto-update-service";
 import {
   isTrustedRendererUrl,
   selectDevelopmentRendererUrl,
@@ -226,6 +229,21 @@ if (!hasSingleInstanceLock) {
     mainWindow = createWindow();
     createTray();
     app.on("activate", showMainWindow);
+
+    // Auto-update: packaged builds only. In development there is no embedded
+    // app-update.yml feed, so the guard avoids a spurious "cannot find update
+    // config" error. The renderer is notified only once a newer signed release
+    // has downloaded, and drives the one-click restart via `updates:install`.
+    if (app.isPackaged) {
+      const autoUpdateService = new AutoUpdateService(autoUpdater, (info) => {
+        mainWindow?.webContents.send("updates:downloaded", info);
+      });
+      ipcMain.handle("updates:install", (event) => {
+        assertTrustedIpcSender(event);
+        autoUpdateService.install();
+      });
+      autoUpdateService.start();
+    }
   });
 }
 

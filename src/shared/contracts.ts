@@ -142,4 +142,15 @@ export interface QuotaMonitorBridge {
   setAlertThreshold(threshold: AlertThreshold): Promise<ProfileActionResult>;
   openProviderUsage(provider: ProviderId): Promise<ProfileActionResult>;
   openEvidence(): Promise<ProfileActionResult>;
+  // Desktop-only auto-update surface. Present only in the packaged app; the
+  // browser preview and tests omit them, so every caller must feature-detect
+  // (`window.quotaMonitor?.onUpdateDownloaded`) before use.
+  onUpdateDownloaded?(listener: (info: UpdateReadyInfo) => void): () => void;
+  installUpdate?(): void;
+}
+
+// A newer version has finished downloading in the background and can be applied
+// on the next restart. Carries only the version string — never any account data.
+export interface UpdateReadyInfo {
+  version: string;
 }

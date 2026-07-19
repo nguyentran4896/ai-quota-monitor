@@ -54,6 +54,7 @@
     "package:linux": "pnpm assets:icon && pnpm build && electron-builder --linux AppImage deb"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "lucide-react": "^1.25.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
@@ -87,6 +88,13 @@
     "asar": true,
     "compression": "normal",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "nguyentran4896",
+        "repo": "ai-quota-monitor"
+      }
+    ],
     "directories": {
       "output": "release"
     },

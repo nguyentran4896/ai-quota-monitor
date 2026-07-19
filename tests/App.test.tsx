@@ -749,4 +749,54 @@ describe("App", () => {
     expect(alert).not.toHaveTextContent(/invoking remote method/i);
     expect(alert).not.toHaveTextContent(/profiles:add/i);
   });
+
+  it("raises a persistent topbar update badge that restarts to install", async () => {
+    const user = userEvent.setup();
+    const installUpdate = vi.fn();
+    // Capture the listener the bridge is handed so the test can fire the
+    // "download complete" event the packaged updater would emit.
+    let notify: ((info: { version: string }) => void) | undefined;
+    window.quotaMonitor = {
+      getDashboard: vi.fn().mockResolvedValue(demoDashboard),
+      refresh: vi.fn().mockResolvedValue(demoDashboard),
+      addProfile: vi.fn(),
+      removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
+      beginLogin: vi.fn(),
+      launchProfile: vi.fn(),
+      chooseCliExecutable: vi.fn(),
+      resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
+      setAlertThreshold: vi.fn(),
+      openProviderUsage: vi.fn(),
+      openEvidence: vi.fn(),
+      onUpdateDownloaded: (listener) => {
+        notify = listener;
+        return () => {};
+      },
+      installUpdate,
+    };
+    render(<App />);
+    await screen.findByText("Your AI runway,");
+
+    // No update yet: the badge is absent.
+    expect(
+      screen.queryByRole("button", { name: /Update ready/i }),
+    ).not.toBeInTheDocument();
+
+    // The updater reports a downloaded release.
+    notify?.({ version: "0.2.0" });
+
+    // A durable badge appears (and survives the transient toast being dismissed).
+    const badge = await screen.findByRole("button", { name: /Update ready/i });
+    expect(badge).toHaveTextContent("0.2.0");
+    expect(badge).toHaveAttribute(
+      "title",
+      "Restart QuotaDeck to install version 0.2.0",
+    );
+
+    await user.click(badge);
+    expect(installUpdate).toHaveBeenCalledTimes(1);
+  });
 });
