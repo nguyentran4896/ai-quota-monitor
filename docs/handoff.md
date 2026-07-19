@@ -1,7 +1,10 @@
 # QuotaDeck improvement pass — verification & handoff
 
-Branch: `codex/managed-profile-lifecycle-and-ux` (10 commits ahead of `main`).
-Not pushed or merged — manual Windows acceptance (below) must pass first.
+Merged to `main` via PR #16. A follow-up pass (PR #16 review fixes + this
+update) added a real-browser visual regression suite and corrected the installer
+signing description below. Manual Windows acceptance (`docs/manual-smoke.md`)
+remains the recommended final check for anything the automated suites cannot
+cover (real CLI lifecycle, forced-colors/reduced-motion paint).
 
 ## What changed, by item
 
@@ -22,13 +25,21 @@ Not pushed or merged — manual Windows acceptance (below) must pass first.
 
 ## Test suite
 
-- `pnpm windows:check` → **exit 0** (doctor + format:check + typecheck + **149 tests** + build).
-- New/expanded specs: `account-preferences.test.ts`, `accounts-destination.test.tsx`
-  (14-account scaling, search, provider/status filters, pin persistence &
-  ordering, launch-records-recent), `cli-settings.test.ts` (install guidance +
-  Store-app caveat), `responsive-layout.test.ts` (bounded scroll, reduced-motion,
-  forced-colors), plus lifecycle/rename/toast/optimistic-save/48-char-label
+- `pnpm check` → **green** (format:check + typecheck + **153 vitest tests** + build).
+- `pnpm test:e2e` → **green** (5 Playwright specs in `e2e/`, real Chromium).
+- New/expanded vitest specs: `account-preferences.test.ts`,
+  `accounts-destination.test.tsx` (14-account scaling, search, provider/status
+  filters, pin persistence & ordering, launch-records-recent, Ctrl+K on
+  Accounts), `cli-settings.test.ts` (install guidance + Store-app caveat),
+  `responsive-layout.test.ts` (bounded scroll for both the Accounts list and the
+  Smart Switcher, reduced-motion, forced-colors), plus lifecycle/rename/toast/
+  optimistic-save/48-char-label/setup-loop-escape-hatch/duplicate-name-sanitize
   cases in `App.test.tsx`.
+- **Visual regression (`e2e/layout.spec.ts`)** renders the real production
+  bundle in Chromium — the layout facts jsdom cannot verify: the Smart Switcher
+  list stays height-bounded and internally scrollable with 14 accounts at
+  1040/1280/1440px (launch action reachable), and the Accounts search paints a
+  visible `:focus-within` ring (plus Ctrl+K focus).
 
 ## Scenarios verified automatically
 
@@ -49,19 +60,26 @@ Recycle Bin/Trash preserved; no automatic failover or quota-evasion routing.
 Pin/recent state is non-sensitive UI-only data in localStorage — no tokens,
 auth files, transcripts, or real identities in the repo.
 
-## Installer
+## Installer & code signing
 
-- `pnpm windows:package` → NSIS installer built.
-- **Unsigned.** No Windows code-signing certificate is configured in
-  `package.json` (`build.win` has no `certificateFile`/`sign`), so the artifact
-  is Authenticode `NotSigned`. Signing must be added on the release runner
-  (certificate + `CSC_LINK`/`CSC_KEY_PASSWORD`) before public distribution;
-  until then Windows SmartScreen will warn on launch.
-- Artifact: `release/QuotaDeck-0.1.0-win-x64.exe` (~102 MB).
-- The NSIS output is **not reproducible** — each `electron-builder` run embeds
-  build-time metadata, so the SHA-256 differs per build. Do not pin a checksum
-  here; generate `Get-FileHash <artifact> -Algorithm SHA256` on the
-  release-runner build and publish that alongside the signed artifact.
+- **Local `pnpm windows:package` is unsigned by design.** No certificate is
+  present locally, so `electron-builder` emits an Authenticode `NotSigned` NSIS
+  installer (~102 MB). The `unsigned-build` job in `release.yml` builds the same
+  way (`CSC_IDENTITY_AUTO_DISCOVERY=false`) for inspection artifacts, and
+  SmartScreen will warn on such builds.
+- **Signed release builds are already wired — conditional on the cert secret.**
+  On a `v*` tag with repo variable `RELEASES_ENABLED=true`, `release.yml`'s
+  `release-build` job signs the Windows artifact from the `WIN_CSC_LINK` /
+  `WIN_CSC_KEY_PASSWORD` secrets, forces `-c.forceCodeSigning=true`, and fails
+  the job unless `Get-AuthenticodeSignature` reports `Valid`
+  (`scripts/verify-signing-env.mjs` pre-checks the secrets; macOS is signed +
+  notarized in the same job). electron-builder auto-discovers the env-based cert,
+  so **no `package.json` change is needed** — supply the certificate secret and
+  the next tagged release is signed.
+- **No checksum is pinned here.** The NSIS output is not reproducible (each build
+  embeds build-time metadata), so its SHA-256 differs per build. The `publish`
+  job writes `SHA256SUMS.txt` over the signed artifacts on the release runner —
+  treat that as authoritative.
 
 ## Dependency audit
 
@@ -71,17 +89,19 @@ auth files, transcripts, or real identities in the repo.
 
 `.github/workflows/ci.yml` runs a native matrix — `windows-latest`,
 `macos-latest`, `ubuntu-latest` — for format/typecheck/test/build on every PR;
-Linux additionally runs `pnpm audit`. Installer packaging is handled by
-`release.yml`.
+Linux additionally runs `pnpm audit`. A separate `visual` job runs the Chromium
+Playwright layout suite (`pnpm test:e2e`) on `ubuntu-latest`. Installer packaging
+and signing are handled by `release.yml`.
 
 ## Remaining gaps / follow-ups
 
-- **Manual Windows acceptance is required before merge** — run
-  `docs/manual-smoke.md` against isolated Electron user data (`--user-data-dir`).
-  It covers the visual/behavioral checks jsdom cannot (width sweep, long-label
-  paint, bounded scroll, reduced-motion, forced-colors, real CLI lifecycle).
+- **Manual Windows acceptance** (`docs/manual-smoke.md`, isolated
+  `--user-data-dir`) is still recommended for the few things neither vitest nor
+  the Chromium visual suite covers: forced-colors/reduced-motion paint and the
+  real provider CLI lifecycle end to end.
+- **Windows code signing needs its certificate secret.** The pipeline is wired
+  (see Installer above); until `WIN_CSC_LINK` / `WIN_CSC_KEY_PASSWORD` and
+  `RELEASES_ENABLED=true` are set, tagged releases build unsigned.
 - **Optional OS tray quick-switch** (item 10) is deferred — native main-process
   work; the in-app switcher and Accounts view cover switching today.
 - **Dark theme** (item 9) is documented as deferred.
-- Checksum above is from a dev machine; treat the CI/release-runner build as
-  authoritative for distribution.

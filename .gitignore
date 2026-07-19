@@ -3,6 +3,10 @@ dist/
 dist-electron/
 coverage/
 release/
+test-results/
+playwright-report/
+blob-report/
+/playwright/.cache/
 *.log
 /data/*.sqlite
 .DS_Store
