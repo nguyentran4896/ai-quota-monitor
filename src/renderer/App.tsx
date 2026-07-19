@@ -3,7 +3,6 @@ import {
   ArrowRight,
   Check,
   CircleHelp,
-  Gauge,
   LayoutDashboard,
   Pencil,
   Plus,
@@ -269,6 +268,15 @@ function useModalDialog(onClose: () => void) {
   return dialogRef;
 }
 
+// The signature instrument: a radial ring dial reading available runway as a
+// fuel gauge. The tabular percentage in the center is the one confident moment
+// per window; the fill turns amber/clay only when the tank runs critically low.
+// Geometry is a plain SVG donut; the accessible progressbar name is unchanged.
+const GAUGE_SIZE = 92;
+const GAUGE_STROKE = 9;
+const GAUGE_RADIUS = (GAUGE_SIZE - GAUGE_STROKE) / 2;
+const GAUGE_CIRCUMFERENCE = 2 * Math.PI * GAUGE_RADIUS;
+
 function QuotaMeter({
   window,
   accountName,
@@ -278,17 +286,12 @@ function QuotaMeter({
 }) {
   const available = Math.max(0, Math.round(100 - window.usedPercent));
   const used = Math.round(window.usedPercent);
+  const tone = available <= 10 ? "crit" : available <= 25 ? "low" : "ok";
+  const center = GAUGE_SIZE / 2;
   return (
     <div className="quota-meter">
-      <div className="meter-heading">
-        <div>
-          <span className="meter-value">{available}%</span>
-          <span className="meter-caption"> available</span>
-        </div>
-        <span className="meter-window">{window.label}</span>
-      </div>
       <div
-        className="meter-track"
+        className="gauge"
         role="progressbar"
         aria-valuemin={0}
         aria-valuemax={100}
@@ -297,11 +300,43 @@ function QuotaMeter({
           window.resetsAt,
         )}`}
       >
-        <span style={{ width: `${available}%` }} />
+        <svg
+          className="gauge-svg"
+          viewBox={`0 0 ${GAUGE_SIZE} ${GAUGE_SIZE}`}
+          aria-hidden="true"
+          focusable="false"
+        >
+          <circle
+            className="gauge-track"
+            cx={center}
+            cy={center}
+            r={GAUGE_RADIUS}
+            fill="none"
+            strokeWidth={GAUGE_STROKE}
+          />
+          <circle
+            className={`gauge-fill gauge-fill-${tone}`}
+            cx={center}
+            cy={center}
+            r={GAUGE_RADIUS}
+            fill="none"
+            strokeWidth={GAUGE_STROKE}
+            strokeLinecap="round"
+            strokeDasharray={`${(available / 100) * GAUGE_CIRCUMFERENCE} ${GAUGE_CIRCUMFERENCE}`}
+            transform={`rotate(-90 ${center} ${center})`}
+          />
+        </svg>
+        <div className="gauge-readout">
+          <span className="gauge-value">
+            {available}
+            <i>%</i>
+          </span>
+          <span className="gauge-caption">available</span>
+        </div>
       </div>
-      <div className="meter-footer">
-        <span>{used}% used</span>
-        <span>{resetLabel(window.resetsAt)}</span>
+      <div className="gauge-meta">
+        <span className="meter-window">{window.label}</span>
+        <span className="meter-reset">{resetLabel(window.resetsAt)}</span>
       </div>
     </div>
   );
@@ -339,7 +374,6 @@ function AccountCard({
         <div className="provider-identity">
           <span className="provider-mark">{meta.mark}</span>
           <div className="provider-identity-text">
-            <div className="eyebrow">{meta.label}</div>
             <h3>{account.displayName}</h3>
             {ambiguous && (
               <span className="account-disambiguator">
@@ -393,36 +427,35 @@ function AccountCard({
         </div>
       </div>
 
+      <div className="account-safety-row">
+        <span className="account-identity">
+          <span className="ident-label">Identity</span>
+          <span className="ident-value">
+            {account.identity ?? "Not reported"}
+          </span>
+        </span>
+        {account.isManaged && (
+          <small className={account.identityVerified ? "verified" : "pending"}>
+            {account.identityVerified ? "Verified" : "Verify before launch"}
+          </small>
+        )}
+      </div>
+
       <div className="account-meta-row">
-        <span className={`status-pill status-${account.quotaStatus}`}>
-          <i />{" "}
+        <span className="card-tag">{titleCase(account.plan)}</span>
+        <span className="card-tag">{authModeLabels[account.authMode]}</span>
+        {account.billingMode !== "subscription" && (
+          <span className="card-tag tone-warn">
+            {billingModeLabels[account.billingMode]}
+          </span>
+        )}
+        <span
+          className={`card-tag ${account.state === "limited" ? "tone-warn" : ""}`}
+        >
           {account.state === "limited"
             ? "Limited"
             : quotaStatusLabels[account.quotaStatus]}
         </span>
-        <span className="plan-pill">{titleCase(account.plan)}</span>
-      </div>
-
-      <div className="account-safety-row">
-        <span>
-          <strong>Identity</strong> {account.identity ?? "Not reported"}
-          {account.isManaged && (
-            <small
-              className={account.identityVerified ? "verified" : "pending"}
-            >
-              {account.identityVerified ? " Verified" : " Verify before launch"}
-            </small>
-          )}
-        </span>
-        <span className="account-mode-pills">
-          <span className="auth-pill">{authModeLabels[account.authMode]}</span>
-          <span className={`billing-pill billing-${account.billingMode}`}>
-            {billingModeLabels[account.billingMode]}
-          </span>
-        </span>
-      </div>
-      <div className="profile-scope">
-        Workspace: {account.isManaged ? "Isolated profile" : "Current CLI home"}
       </div>
 
       {account.quotaWindows.length ? (
@@ -1775,19 +1808,29 @@ export default function App() {
                   </p>
                 </div>
                 <div className="summary-card">
-                  <div className="summary-icon">
-                    <Gauge size={22} />
-                  </div>
-                  <div className="summary-stat">
-                    <strong>
-                      {summary.ready}/{summary.total}
-                    </strong>
-                    <span>accounts ready</span>
+                  <div className="summary-block">
+                    <span className="summary-figure">
+                      {summary.ready}
+                      <i>/{summary.total}</i>
+                    </span>
+                    <span className="summary-label">accounts ready</span>
+                    <div className="readiness-track" aria-hidden="true">
+                      {dashboard.accounts.map((account) => (
+                        <span
+                          key={account.id}
+                          className={`readiness-seg ${
+                            account.state === "ready" ? "on" : ""
+                          }`}
+                        />
+                      ))}
+                    </div>
                   </div>
                   <div className="summary-divider" />
-                  <div className="summary-stat compact">
-                    <strong>{summary.reportedWindows}</strong>
-                    <span>reported windows</span>
+                  <div className="summary-block compact">
+                    <span className="summary-figure sm">
+                      {summary.reportedWindows}
+                    </span>
+                    <span className="summary-label">reported windows</span>
                   </div>
                 </div>
               </section>
