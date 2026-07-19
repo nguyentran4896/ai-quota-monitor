@@ -985,6 +985,65 @@ button:focus-visible {
   opacity: 0.5;
   cursor: default;
 }
+.toast-region {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 60;
+  display: grid;
+  gap: 8px;
+  max-width: min(380px, calc(100vw - 36px));
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 12px 12px 14px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #d7dcd6;
+  border-left: 4px solid #2f9c73;
+  box-shadow: 0 14px 34px rgba(44, 63, 56, 0.16);
+}
+.toast.tone-error {
+  border-left-color: #bf4f36;
+}
+.toast-message {
+  flex: 1;
+  color: #2c3b36;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.toast-action {
+  flex: 0 0 auto;
+  border: 1px solid #cfd6d1;
+  background: #f1f6f3;
+  color: #2c765d;
+  border-radius: 8px;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.toast-action:hover {
+  background: #e6efe9;
+}
+.toast-dismiss {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #7d8581;
+  cursor: pointer;
+}
+.toast-dismiss:hover {
+  background: #eef0ec;
+  color: #3a4744;
+}
 .action-message {
   margin: 10px 2px -2px;
   padding: 8px 9px;

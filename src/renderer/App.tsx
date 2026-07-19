@@ -419,12 +419,10 @@ function AccountCard({
 function SmartSwitcher({
   accounts,
   onAction,
-  actionMessage,
   shortcutModifier,
 }: {
   accounts: AccountSnapshot[];
   onAction: (account: AccountSnapshot) => Promise<void>;
-  actionMessage: string | null;
   shortcutModifier: "Ctrl" | "⌘";
 }) {
   const [selected, setSelected] = useState(accounts[0]?.id ?? "");
@@ -544,11 +542,6 @@ function SmartSwitcher({
             : `Launch ${selectedAccount ? providerMeta[selectedAccount.provider].label : "account"}`}
         <ArrowRight size={17} />
       </button>
-      {actionMessage && (
-        <p className="action-message" role="status">
-          {actionMessage}
-        </p>
-      )}
       <p className="safety-note">
         <ShieldCheck size={14} /> Launching starts a separate profile process.
         QuotaDeck never copies raw tokens.
@@ -990,6 +983,55 @@ function CliSettingsDialog({
   );
 }
 
+type ToastState = {
+  message: string;
+  tone: "info" | "error";
+  action?: { label: string; run: () => void };
+};
+
+// A persistent, accessible notification region rendered outside the responsive
+// switcher so it stays visible at every width and never follows the selected
+// account. Errors assert; informational updates are polite status.
+function ToastRegion({
+  toast,
+  onDismiss,
+}: {
+  toast: ToastState | null;
+  onDismiss: () => void;
+}) {
+  if (!toast) return null;
+  return (
+    <div className="toast-region">
+      <div
+        className={`toast tone-${toast.tone}`}
+        role={toast.tone === "error" ? "alert" : "status"}
+      >
+        <span className="toast-message">{toast.message}</span>
+        {toast.action && (
+          <button
+            type="button"
+            className="toast-action"
+            onClick={() => {
+              toast.action!.run();
+              onDismiss();
+            }}
+          >
+            {toast.action.label}
+          </button>
+        )}
+        <button
+          type="button"
+          className="toast-dismiss"
+          onClick={onDismiss}
+          aria-label="Dismiss notification"
+        >
+          <X size={15} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [dashboard, setDashboard] = useState<DashboardSnapshot | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -999,7 +1041,19 @@ export default function App() {
   const [renameTarget, setRenameTarget] = useState<AccountSnapshot | null>(
     null,
   );
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
+
+  const showToast = useCallback(
+    (message: string, options: Partial<Omit<ToastState, "message">> = {}) => {
+      // A new action always replaces the previous notification.
+      setToast({
+        message,
+        tone: options.tone ?? "info",
+        action: options.action,
+      });
+    },
+    [],
+  );
 
   const loadDashboard = useCallback(async (force = false) => {
     setIsRefreshing(true);
@@ -1018,40 +1072,57 @@ export default function App() {
     }
   }, []);
 
-  const handleProfileAction = useCallback(async (account: AccountSnapshot) => {
-    const bridge = window.quotaMonitor;
-    if (!bridge) {
-      setActionMessage("Launch actions are available in the desktop app.");
-      return;
-    }
-    try {
-      const result = accountNeedsSetup(account)
-        ? await bridge.beginLogin(account.id)
-        : await bridge.launchProfile(account.id);
-      setActionMessage(result.message);
-    } catch {
-      setActionMessage("The provider session could not be opened. Try again.");
-    }
-  }, []);
+  const handleProfileAction = useCallback(
+    async (account: AccountSnapshot) => {
+      const bridge = window.quotaMonitor;
+      if (!bridge) {
+        showToast("Launch actions are available in the desktop app.");
+        return;
+      }
+      try {
+        const result = accountNeedsSetup(account)
+          ? await bridge.beginLogin(account.id)
+          : await bridge.launchProfile(account.id);
+        showToast(`${account.displayName}: ${result.message}`, {
+          tone: result.ok ? "info" : "error",
+          // Offer a direct fix when the provider CLI is the blocker.
+          action:
+            !result.ok && account.lifecycle === "provider-error"
+              ? {
+                  label: "Open CLI settings",
+                  run: () => setShowCliSettings(true),
+                }
+              : undefined,
+        });
+      } catch {
+        showToast(
+          `${account.displayName}: the provider session could not be opened.`,
+          { tone: "error" },
+        );
+      }
+    },
+    [showToast],
+  );
 
   const handleRemoveProfile = useCallback(
     async (account: AccountSnapshot) => {
       const bridge = window.quotaMonitor;
       if (!bridge) {
-        setActionMessage("Profile removal is available in the desktop app.");
+        showToast("Profile removal is available in the desktop app.");
         return;
       }
       try {
         const result = await bridge.removeProfile(account.id);
-        setActionMessage(result.message);
+        showToast(result.message, { tone: result.ok ? "info" : "error" });
         if (result.ok) await loadDashboard(true);
       } catch {
-        setActionMessage(
-          "The account profile could not be removed. Try again.",
+        showToast(
+          `${account.displayName}: the account profile could not be removed.`,
+          { tone: "error" },
         );
       }
     },
-    [loadDashboard],
+    [loadDashboard, showToast],
   );
 
   const handleRenameProfile = useCallback((account: AccountSnapshot) => {
@@ -1061,36 +1132,46 @@ export default function App() {
   const handleEvidence = useCallback(async () => {
     const bridge = window.quotaMonitor;
     if (!bridge) {
-      setActionMessage(
+      showToast(
         "The cited research is available in docs/research in the desktop project.",
       );
       return;
     }
     try {
       const result = await bridge.openEvidence();
-      setActionMessage(result.message);
+      showToast(result.message, { tone: result.ok ? "info" : "error" });
     } catch {
-      setActionMessage("The provider research could not be opened.");
+      showToast("The provider research could not be opened.", {
+        tone: "error",
+      });
     }
-  }, []);
+  }, [showToast]);
 
-  const handleProviderUsage = useCallback(async (provider: ProviderId) => {
-    const bridge = window.quotaMonitor;
-    if (!bridge) {
-      setActionMessage(
-        provider === "claude"
-          ? "In Claude Code, run /usage to verify current plan limits."
-          : "In Codex, open Settings → Usage to verify current plan limits.",
-      );
-      return;
-    }
-    try {
-      const result = await bridge.openProviderUsage(provider);
-      setActionMessage(result.message);
-    } catch {
-      setActionMessage("The official provider usage help could not be opened.");
-    }
-  }, []);
+  const handleProviderUsage = useCallback(
+    async (provider: ProviderId) => {
+      const bridge = window.quotaMonitor;
+      const providerLabel = providerMeta[provider].label;
+      if (!bridge) {
+        showToast(
+          provider === "claude"
+            ? "In Claude Code, run /usage to verify current plan limits."
+            : "In Codex, open Settings → Usage to verify current plan limits.",
+        );
+        return;
+      }
+      try {
+        const result = await bridge.openProviderUsage(provider);
+        showToast(`${providerLabel}: ${result.message}`, {
+          tone: result.ok ? "info" : "error",
+        });
+      } catch {
+        showToast(`${providerLabel}: usage help could not be opened.`, {
+          tone: "error",
+        });
+      }
+    },
+    [showToast],
+  );
 
   useEffect(() => {
     void loadDashboard();
@@ -1333,7 +1414,6 @@ export default function App() {
             <SmartSwitcher
               accounts={dashboard.accounts}
               onAction={handleProfileAction}
-              actionMessage={actionMessage}
               shortcutModifier={dashboard.platform.shortcutModifier}
             />
           </section>
@@ -1365,11 +1445,12 @@ export default function App() {
           account={renameTarget}
           onClose={() => setRenameTarget(null)}
           onRenamed={(message) => {
-            setActionMessage(message);
+            showToast(message);
             void loadDashboard(true);
           }}
         />
       )}
+      <ToastRegion toast={toast} onDismiss={() => setToast(null)} />
     </div>
   );
 }

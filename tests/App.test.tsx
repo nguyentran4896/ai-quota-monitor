@@ -403,6 +403,50 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows a dismissible, account-identifying toast outside the switcher", async () => {
+    const user = userEvent.setup();
+    const managed = {
+      ...demoDashboard.accounts[1]!,
+      id: "codex-managed",
+      displayName: "Codex Work",
+      isManaged: true,
+      isActive: false,
+      lifecycle: "verified" as const,
+    };
+    const dashboard = { ...demoDashboard, accounts: [managed] };
+    window.quotaMonitor = {
+      getDashboard: vi.fn().mockResolvedValue(dashboard),
+      refresh: vi.fn().mockResolvedValue(dashboard),
+      addProfile: vi.fn(),
+      removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
+      beginLogin: vi.fn(),
+      launchProfile: vi
+        .fn()
+        .mockResolvedValue({ ok: true, message: "Launched Codex Work." }),
+      chooseCliExecutable: vi.fn(),
+      resetCliExecutable: vi.fn(),
+      setAlertThreshold: vi.fn(),
+      openProviderUsage: vi.fn(),
+      openEvidence: vi.fn(),
+    };
+    render(<App />);
+    await screen.findByText("Your AI runway,");
+
+    await user.click(screen.getByRole("button", { name: /Launch Codex/i }));
+
+    const toast = await screen.findByRole("status");
+    expect(toast).toHaveTextContent("Codex Work: Launched Codex Work.");
+    // The toast lives outside the switcher aside, so it does not follow the
+    // selected account.
+    expect(toast.closest(".switcher-panel")).toBeNull();
+
+    await user.click(
+      screen.getByRole("button", { name: "Dismiss notification" }),
+    );
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
   it("saves the alert threshold optimistically without a provider refresh", async () => {
     const user = userEvent.setup();
     const refresh = vi.fn().mockResolvedValue(demoDashboard);
