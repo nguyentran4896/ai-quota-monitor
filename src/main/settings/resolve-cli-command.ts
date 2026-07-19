@@ -64,8 +64,10 @@ async function resolveWindowsExecutable(
 
   // Explicit path: honour it directly, appending a PATHEXT extension only when
   // the caller omitted one (a selected claude.ps1 already carries its suffix).
+  // Filesystem probes use the host path module so injected-platform tests can
+  // exercise this lookup on posix hosts; on Windows `path` is `path.win32`.
   if (path.win32.isAbsolute(command) || /[\\/]/.test(command)) {
-    const base = path.win32.resolve(command);
+    const base = path.resolve(command);
     if (hasPathextExtension(base) && (await fileExists(base))) return base;
     for (const extension of extensions) {
       const candidate = base + extension;
@@ -83,7 +85,7 @@ async function resolveWindowsExecutable(
     (pathKey ? environment[pathKey] : undefined)?.split(";").filter(Boolean) ??
     [];
   for (const directory of directories) {
-    const base = path.win32.join(directory, command);
+    const base = path.join(directory, command);
     if (hasPathextExtension(command) && (await fileExists(base))) return base;
     for (const extension of extensions) {
       const candidate = base + extension;
