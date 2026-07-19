@@ -1270,39 +1270,21 @@ button:focus-visible {
   .workspace-grid {
     grid-template-columns: 1fr;
   }
+  /* Keep the switcher — and its launch/setup action and status message —
+     reachable at every supported window width. Below the two-column
+     breakpoint it moves above the account grid and its list reflows into a
+     compact, bounded grid instead of disappearing. Electron's minWidth is
+     1040px, so this is the narrowest layout the app actually renders. */
   .switcher-panel {
-    display: none;
+    order: -1;
+  }
+  .switcher-list {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    max-height: 244px;
+    overflow-y: auto;
   }
   .summary-card {
     min-width: 300px;
-  }
-}
-
-@media (max-width: 880px) {
-  body {
-    min-width: 0;
-  }
-  .app-shell {
-    display: block;
-  }
-  .sidebar {
-    display: none;
-  }
-  .content-wrap {
-    width: calc(100% - 36px);
-  }
-  .hero-row {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .summary-card {
-    min-width: 0;
-  }
-  .account-grid {
-    grid-template-columns: 1fr;
-  }
-  .cli-status-list {
-    grid-template-columns: 1fr;
   }
 }
 
