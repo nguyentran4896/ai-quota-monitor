@@ -14,7 +14,7 @@ describe("desktop platform support", () => {
     expect(describeRuntimePlatform(platform)).toEqual(expected);
   });
 
-  it("adds common macOS GUI CLI locations without dropping the existing PATH", () => {
+  it("adds common macOS GUI CLI locations after the existing PATH", () => {
     const environment = createProfileEnvironment(
       "claude",
       "/Users/dev/Library/Application Support/QuotaDeck/claude-home",
@@ -22,15 +22,29 @@ describe("desktop platform support", () => {
       { platform: "darwin", homeDirectory: "/Users/dev" },
     );
     expect(environment.PATH?.split(":")).toEqual([
+      "/usr/bin",
+      "/bin",
       "/Users/dev/.local/bin",
       "/Users/dev/Library/pnpm",
       "/Users/dev/.bun/bin",
       "/opt/homebrew/bin",
       "/usr/local/bin",
-      "/usr/bin",
-      "/bin",
     ]);
     expect(environment.ANTHROPIC_API_KEY).toBeUndefined();
+  });
+
+  it("keeps the existing PATH ahead of a duplicated CLI candidate", () => {
+    const environment = createProfileEnvironment(
+      "claude",
+      "/Users/dev/Library/Application Support/QuotaDeck/claude-home",
+      { PATH: "/usr/local/bin:/usr/bin" },
+      { platform: "darwin", homeDirectory: "/Users/dev" },
+    );
+    const entries = environment.PATH?.split(":") ?? [];
+    expect(entries.slice(0, 2)).toEqual(["/usr/local/bin", "/usr/bin"]);
+    expect(entries.filter((entry) => entry === "/usr/local/bin")).toHaveLength(
+      1,
+    );
   });
 
   it("preserves the Windows Path key while adding package-manager CLI locations", () => {
@@ -47,10 +61,10 @@ describe("desktop platform support", () => {
     );
     expect(environment.PATH).toBeUndefined();
     expect(environment.Path?.split(";")).toEqual([
+      "C:\\Windows\\System32",
       "C:\\Users\\dev\\AppData\\Roaming\\npm",
       "C:\\Users\\dev\\AppData\\Local\\pnpm",
       "C:\\Users\\dev\\.local\\bin",
-      "C:\\Windows\\System32",
     ]);
     expect(environment.OPENAI_API_KEY).toBeUndefined();
   });

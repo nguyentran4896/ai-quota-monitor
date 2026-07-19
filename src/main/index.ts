@@ -40,6 +40,10 @@ function resourcePath(fileName: string, developmentPath: string): string {
 
 function createWindow(): BrowserWindow {
   const isMac = process.platform === "darwin";
+  // Window Controls Overlay is Windows/macOS-only. On Linux it is a no-op, so a
+  // hidden title bar would leave the window with no controls and no in-app ones.
+  // Keep the custom title bar on macOS/Windows and use the native frame on Linux.
+  const isWindows = process.platform === "win32";
   const window = new BrowserWindow({
     width: 1440,
     height: 920,
@@ -47,8 +51,8 @@ function createWindow(): BrowserWindow {
     minHeight: 720,
     show: false,
     backgroundColor: "#f4f2ec",
-    titleBarStyle: isMac ? "hiddenInset" : "hidden",
-    ...(!isMac && {
+    titleBarStyle: isMac ? "hiddenInset" : isWindows ? "hidden" : "default",
+    ...(isWindows && {
       titleBarOverlay: {
         color: "#f3f1eb",
         symbolColor: "#1d2a27",

@@ -73,6 +73,20 @@ describe("native Windows development workflow", () => {
     );
   });
 
+  it("treats a non-x64 Node.js architecture as a warning, not a required failure", async () => {
+    const doctor = await readFile(
+      path.join(projectRoot, "scripts", "windows-doctor.ps1"),
+      "utf8",
+    );
+
+    expect(doctor).not.toContain("must be the native Windows x64 build");
+    expect(doctor).toContain('if ($nodePlatform -ne "win32") {');
+    expect(doctor).toMatch(
+      /if \(\$nodeArchitecture -ne "x64"\) \{\s*\n\s*Add-Warning/,
+    );
+    expect(doctor).toContain("windows:package --x64");
+  });
+
   windowsIt("passes the doctor in a native Windows process", () => {
     const environment = { ...process.env };
     delete environment.WSL_DISTRO_NAME;

@@ -217,6 +217,12 @@ button:focus-visible {
 .topbar button {
   -webkit-app-region: no-drag;
 }
+/* Linux uses the native title bar, so drop the drag region and the space
+   reserved on the right for the Windows/macOS window-control overlay. */
+.platform-linux .topbar {
+  padding: 0 4.5vw;
+  -webkit-app-region: no-drag;
+}
 .breadcrumb {
   display: flex;
   align-items: center;

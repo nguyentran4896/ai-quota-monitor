@@ -98,12 +98,15 @@ if ($null -eq $nodeCommand) {
     $nodeArchitecture = Invoke-CheckedNativeCommand -FilePath $nodeCommand.Source -Arguments @("-p", "process.arch") -CaptureOutput
     $nodeVersion = Invoke-CheckedNativeCommand -FilePath $nodeCommand.Source -Arguments @("--version") -CaptureOutput
     $nodeMajor = [int](($nodeVersion.TrimStart("v") -split '\.')[0])
-    if ($nodePlatform -ne "win32" -or $nodeArchitecture -ne "x64") {
-      Add-Failure "Node.js must be the native Windows x64 build; found $nodePlatform/$nodeArchitecture."
+    if ($nodePlatform -ne "win32") {
+      Add-Failure "Node.js must be the native Windows build; found $nodePlatform/$nodeArchitecture."
     } elseif ($nodeMajor -lt 22) {
       Add-Failure "Node.js 22 or newer is required; found $nodeVersion."
     } else {
       Write-Check -Status "OK" -Message "Node.js $nodeVersion for $nodePlatform/$nodeArchitecture ($($nodeCommand.Source))"
+      if ($nodeArchitecture -ne "x64") {
+        Add-Warning "Node.js is $nodeArchitecture, not x64. Development, typechecking, and tests work; only 'pnpm windows:package --x64' requires an x64 Node.js (or x64 emulation)."
+      }
     }
   } catch {
     Add-Failure $_.Exception.Message

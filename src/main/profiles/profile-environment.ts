@@ -11,7 +11,7 @@ export interface ProfileEnvironmentContext {
   homeDirectory?: string;
 }
 
-function prependCliSearchPaths(
+function appendCliSearchPaths(
   environment: NodeJS.ProcessEnv,
   platform: NodeJS.Platform,
   homeDirectory: string,
@@ -58,7 +58,7 @@ function prependCliSearchPaths(
   const comparisonKey = (value: string) =>
     isWindows ? value.toLowerCase() : value;
   const seen = new Set<string>();
-  const combined = [...candidates, ...existing].filter((entry) => {
+  const combined = [...existing, ...candidates].filter((entry) => {
     const key = comparisonKey(entry);
     if (seen.has(key)) return false;
     seen.add(key);
@@ -74,7 +74,7 @@ export function createProfileEnvironment(
   context: ProfileEnvironmentContext = {},
 ): NodeJS.ProcessEnv {
   const environment = { ...baseEnvironment };
-  prependCliSearchPaths(
+  appendCliSearchPaths(
     environment,
     context.platform ?? process.platform,
     context.homeDirectory ?? os.homedir(),

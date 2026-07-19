@@ -39,6 +39,33 @@ All notable changes to QuotaDeck are documented here. The project follows
   per-provider official usage-verification actions.
 - Exhaustive provider lifecycle registries for collection, monitoring teardown,
   and official logout.
+- Native Windows development workflow with `windows-setup.ps1` and
+  `windows-doctor.ps1` scripts, `windows:*` pnpm scripts, VS Code tasks, and
+  `docs/windows-development.md` guidance.
+
+### Changed
+
+- Renamed the npm package to `quotadeck` to match the product brand.
+- CLI search candidates now append after the existing PATH so user-writable
+  directories can no longer shadow the official CLI.
+- The Windows doctor Node.js architecture check warns on non-x64 hosts
+  (including ARM64) instead of hard-failing dev and check flows.
+
+### Fixed
+
+- Windows `.cmd`/`.bat` CLI shims resolve through a PATHEXT-aware lookup before
+  launching.
+- Windows Terminal (`wt.exe`) tabs embed the profile environment so new tabs no
+  longer inherit the default account.
+- Linux windows keep the native title bar instead of losing all controls to an
+  unsupported Window Controls Overlay.
+- Linux terminal launches detect immediate nonzero exits so the remaining
+  fallback candidates are tried.
+
+### Security
+
+- The production renderer CSP omits the development-only Vite HMR websocket
+  source.
 
 ## [0.1.0] - 2026-07-18
 

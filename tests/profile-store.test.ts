@@ -396,7 +396,10 @@ describe("cross-platform profile launching", () => {
       },
       "C:\\Users\\O'Brien & Team",
     );
-    const fallbackCommand = candidates[1]?.args.at(-1);
+    const fallbackCommand = Buffer.from(
+      candidates[1]?.args.at(-1) ?? "",
+      "base64",
+    ).toString("utf16le");
     expect(fallbackCommand).toContain(
       "Set-Location -LiteralPath 'C:\\Users\\O''Brien & Team'",
     );
