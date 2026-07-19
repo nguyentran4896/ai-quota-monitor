@@ -21,6 +21,19 @@ function Invoke-CheckedNativeCommand {
   }
 }
 
+function Find-NativeCommand {
+  [CmdletBinding()]
+  param([string[]]$Names)
+
+  foreach ($name in $Names) {
+    $command = Get-Command $name -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -ne $command) {
+      return $command
+    }
+  }
+  return $null
+}
+
 function Get-PinnedPnpmVersion {
   [CmdletBinding()]
   param([string]$ProjectRoot)

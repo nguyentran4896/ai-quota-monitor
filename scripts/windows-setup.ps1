@@ -22,7 +22,7 @@ $pnpmVersion = Get-PinnedPnpmVersion -ProjectRoot $projectRoot
 $userNpmDirectory = Join-Path $env:APPDATA "npm"
 New-Item -ItemType Directory -Path $userNpmDirectory -Force | Out-Null
 
-$corepack = Get-Command "corepack.cmd" -ErrorAction SilentlyContinue | Select-Object -First 1
+$corepack = Find-NativeCommand -Names @("corepack.cmd")
 if ($null -ne $corepack) {
   Write-Host "Activating pnpm $pnpmVersion with Corepack in $userNpmDirectory..."
   Invoke-CheckedNativeCommand -FilePath $corepack.Source -Arguments @(
@@ -36,7 +36,7 @@ if ($null -ne $corepack) {
     "pnpm@$pnpmVersion"
   )
 } else {
-  $npm = Get-Command "npm.cmd" -ErrorAction SilentlyContinue | Select-Object -First 1
+  $npm = Find-NativeCommand -Names @("npm.cmd")
   if ($null -eq $npm) {
     throw "Neither Corepack nor npm.cmd is available. Repair the native Windows Node.js installation."
   }

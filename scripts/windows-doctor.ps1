@@ -40,18 +40,6 @@ function Add-Warning {
   Write-Check -Status "WARN" -Message $Message
 }
 
-function Find-NativeCommand {
-  param([string[]]$Names)
-
-  foreach ($name in $Names) {
-    $command = Get-Command $name -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($null -ne $command) {
-      return $command
-    }
-  }
-  return $null
-}
-
 Write-Host "QuotaDeck native Windows development doctor" -ForegroundColor Cyan
 Write-Host "Repository: $projectRoot"
 Write-Host ""
