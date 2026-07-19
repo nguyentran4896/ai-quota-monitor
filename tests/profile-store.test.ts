@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -70,6 +70,88 @@ describe("ProfileStore", () => {
     );
     expect((await store.get(profile.id))?.verifiedIdentityVerifier).toBe(
       "a".repeat(64),
+    );
+  });
+
+  it("rejects duplicate labels within a provider but allows them across providers", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(os.tmpdir(), "quotadeck-dedupe-"),
+    );
+    temporaryDirectories.push(dataDirectory);
+    const store = new ProfileStore(dataDirectory, "win32");
+
+    await store.create({ provider: "codex", displayName: "Work" });
+
+    // Case-fold and whitespace collapse: "work" and "  Work " collide.
+    await expect(
+      store.create({ provider: "codex", displayName: "work" }),
+    ).rejects.toThrow(/already exists/i);
+    await expect(
+      store.create({ provider: "codex", displayName: "  Work " }),
+    ).rejects.toThrow(/already exists/i);
+
+    // The same label under a different provider is allowed.
+    await expect(
+      store.create({ provider: "claude", displayName: "Work" }),
+    ).resolves.toMatchObject({ provider: "claude", displayName: "Work" });
+  });
+
+  it("renames a managed profile and enforces uniqueness on rename", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(os.tmpdir(), "quotadeck-rename-"),
+    );
+    temporaryDirectories.push(dataDirectory);
+    const store = new ProfileStore(dataDirectory, "win32");
+    const first = await store.create({
+      provider: "codex",
+      displayName: "Personal",
+    });
+    const second = await store.create({
+      provider: "codex",
+      displayName: "Work",
+    });
+
+    const renamed = await store.rename(second.id, "  Client   Work  ");
+    expect(renamed.displayName).toBe("Client Work");
+    expect((await store.get(second.id))?.displayName).toBe("Client Work");
+
+    // Cannot rename onto another profile's (case-folded) label.
+    await expect(store.rename(second.id, "personal")).rejects.toThrow(
+      /already exists/i,
+    );
+    // Renaming to its own current label is a no-op success.
+    await expect(store.rename(first.id, "Personal")).resolves.toMatchObject({
+      displayName: "Personal",
+    });
+  });
+
+  it("keeps legacy duplicate profiles loadable", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(os.tmpdir(), "quotadeck-legacy-"),
+    );
+    temporaryDirectories.push(dataDirectory);
+    const store = new ProfileStore(dataDirectory, "win32");
+    // Two managed profiles created before dedupe existed. Simulate by writing
+    // the registry directly with duplicate labels, then confirm both load.
+    const a = await store.create({ provider: "codex", displayName: "Alpha" });
+    const b = await store.create({ provider: "codex", displayName: "Beta" });
+    const registryPath = path.join(dataDirectory, "profiles.json");
+    const stored = JSON.parse(await readFile(registryPath, "utf8")) as {
+      schemaVersion: 1;
+      profiles: { id: string; displayName: string }[];
+    };
+    stored.profiles = stored.profiles.map((profile) =>
+      profile.id === b.id ? { ...profile, displayName: "Alpha" } : profile,
+    );
+    await writeFile(registryPath, JSON.stringify(stored, null, 2));
+
+    const managed = (await store.list()).filter((profile) => profile.isManaged);
+    expect(managed.map((profile) => profile.displayName).sort()).toEqual([
+      "Alpha",
+      "Alpha",
+    ]);
+    expect(managed.map((profile) => profile.id).sort()).toEqual(
+      [a.id, b.id].sort(),
     );
   });
 

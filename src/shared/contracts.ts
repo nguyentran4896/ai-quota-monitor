@@ -115,6 +115,10 @@ export interface QuotaMonitorBridge {
   refresh(): Promise<DashboardSnapshot>;
   addProfile(input: AddProfileInput): Promise<DashboardSnapshot>;
   removeProfile(profileId: string): Promise<ProfileActionResult>;
+  renameProfile(
+    profileId: string,
+    displayName: string,
+  ): Promise<ProfileActionResult>;
   beginLogin(profileId: string): Promise<ProfileActionResult>;
   launchProfile(profileId: string): Promise<ProfileActionResult>;
   chooseCliExecutable(provider: ProviderId): Promise<ProfileActionResult>;

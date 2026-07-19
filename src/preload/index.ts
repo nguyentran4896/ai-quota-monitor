@@ -13,6 +13,8 @@ const bridge: QuotaMonitorBridge = Object.freeze({
     ipcRenderer.invoke("profiles:add", input),
   removeProfile: (profileId: string) =>
     ipcRenderer.invoke("profiles:remove", profileId),
+  renameProfile: (profileId: string, displayName: string) =>
+    ipcRenderer.invoke("profiles:rename", profileId, displayName),
   beginLogin: (profileId: string) =>
     ipcRenderer.invoke("profiles:login", profileId),
   launchProfile: (profileId: string) =>

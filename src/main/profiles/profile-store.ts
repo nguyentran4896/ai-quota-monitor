@@ -21,8 +21,18 @@ interface StoredProfiles {
   profiles: ProviderProfile[];
 }
 
+function normalizeLabel(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+// Labels are compared trimmed, whitespace-collapsed, and case-folded so
+// "Work", "work", and " work " are treated as the same name within a provider.
+function labelKey(value: string): string {
+  return normalizeLabel(value).toLocaleLowerCase("en-US");
+}
+
 function validateDisplayName(value: string): string {
-  const normalized = value.trim().replace(/\s+/g, " ");
+  const normalized = normalizeLabel(value);
   if (
     normalized.length < 2 ||
     normalized.length > 48 ||
@@ -142,6 +152,30 @@ export class ProfileStore {
     return [...this.builtInProfiles(), ...(await this.readManaged())];
   }
 
+  // Rejects a label that collides (case-insensitively) with another profile of
+  // the same provider. Legacy duplicate data already on disk is left loadable;
+  // only new writes (create/rename) are held to uniqueness.
+  private async assertUniqueLabel(
+    provider: ProviderId,
+    displayName: string,
+    exceptId?: string,
+  ): Promise<void> {
+    const key = labelKey(displayName);
+    const collides = (await this.list()).some(
+      (profile) =>
+        profile.provider === provider &&
+        profile.id !== exceptId &&
+        labelKey(profile.displayName) === key,
+    );
+    if (collides) {
+      throw new Error(
+        `An account named "${displayName}" already exists for ${
+          provider === "claude" ? "Claude" : "Codex"
+        }. Choose a different label.`,
+      );
+    }
+  }
+
   async get(profileId: string): Promise<ProviderProfile | null> {
     return (
       (await this.list()).find((profile) => profile.id === profileId) ?? null
@@ -161,6 +195,7 @@ export class ProfileStore {
     }
 
     const displayName = validateDisplayName(input.displayName);
+    await this.assertUniqueLabel(input.provider, displayName);
     const id = randomUUID();
     const configRoot = path.join(
       this.profilesRoot,
@@ -214,6 +249,24 @@ export class ProfileStore {
       verifiedIdentity: normalized,
       verifiedIdentityVerifier: identityVerifier,
     };
+    await this.writeManaged(
+      profiles.map((candidate) =>
+        candidate.id === profileId ? updated : candidate,
+      ),
+    );
+    return updated;
+  }
+
+  async rename(
+    profileId: string,
+    displayName: string,
+  ): Promise<ProviderProfile> {
+    const normalized = validateDisplayName(displayName);
+    const profiles = await this.readManaged();
+    const profile = profiles.find((candidate) => candidate.id === profileId);
+    if (!profile) throw new Error("Managed profile was not found.");
+    await this.assertUniqueLabel(profile.provider, normalized, profileId);
+    const updated = { ...profile, displayName: normalized };
     await this.writeManaged(
       profiles.map((candidate) =>
         candidate.id === profileId ? updated : candidate,

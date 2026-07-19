@@ -488,6 +488,9 @@ button:focus-visible {
   background: #d7f3e4;
   color: #225a48;
 }
+.provider-identity-text {
+  min-width: 0;
+}
 .provider-identity h3 {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -498,6 +501,15 @@ button:focus-visible {
     600 14px "Segoe UI Variable Display",
     "Segoe UI",
     sans-serif;
+}
+.account-disambiguator {
+  display: block;
+  margin-top: 3px;
+  color: #8b9290;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .icon-button {
   display: grid;
@@ -518,10 +530,13 @@ button:focus-visible {
   display: flex;
   align-items: center;
   gap: 9px;
+  flex: 0 0 auto;
 }
+.rename-profile-button,
 .remove-profile-button {
   width: 28px;
   height: 28px;
+  flex: 0 0 auto;
   display: grid;
   place-items: center;
   border: 0;
@@ -529,6 +544,10 @@ button:focus-visible {
   background: transparent;
   color: #9a9f9c;
   cursor: pointer;
+}
+.rename-profile-button:hover {
+  background: #eef3f0;
+  color: #2c765d;
 }
 .remove-profile-button:hover {
   background: #fff0e9;

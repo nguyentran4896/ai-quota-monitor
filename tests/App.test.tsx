@@ -63,6 +63,7 @@ describe("App", () => {
       refresh: vi.fn().mockResolvedValue(macDashboard),
       addProfile: vi.fn(),
       removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
       beginLogin: vi.fn(),
       launchProfile: vi.fn(),
       chooseCliExecutable: vi.fn(),
@@ -104,6 +105,7 @@ describe("App", () => {
       refresh: vi.fn().mockResolvedValue(linuxDashboard),
       addProfile: vi.fn(),
       removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
       beginLogin: vi.fn(),
       launchProfile: vi.fn(),
       chooseCliExecutable: vi.fn(),
@@ -184,6 +186,7 @@ describe("App", () => {
       refresh: vi.fn().mockResolvedValue(refreshed),
       addProfile: vi.fn(),
       removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
       beginLogin: vi.fn(),
       launchProfile: vi.fn(),
       chooseCliExecutable: vi.fn(),
@@ -227,6 +230,7 @@ describe("App", () => {
       refresh: vi.fn().mockResolvedValue(dashboard),
       addProfile: vi.fn(),
       removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
       beginLogin,
       launchProfile,
       chooseCliExecutable: vi.fn(),
@@ -273,6 +277,7 @@ describe("App", () => {
       refresh: vi.fn().mockResolvedValue(dashboard),
       addProfile: vi.fn(),
       removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
       beginLogin,
       launchProfile,
       chooseCliExecutable: vi.fn(),
@@ -295,5 +300,50 @@ describe("App", () => {
 
     expect(beginLogin).toHaveBeenCalledWith("claude-new");
     expect(launchProfile).not.toHaveBeenCalled();
+  });
+
+  it("renames a managed profile through the rename dialog", async () => {
+    const user = userEvent.setup();
+    const managed = {
+      ...demoDashboard.accounts[1]!,
+      id: "codex-managed",
+      displayName: "Codex Work",
+      isManaged: true,
+      isActive: false,
+      lifecycle: "verified" as const,
+    };
+    const dashboard = { ...demoDashboard, accounts: [managed] };
+    const renameProfile = vi
+      .fn()
+      .mockResolvedValue({ ok: true, message: "Renamed to Codex Client." });
+    window.quotaMonitor = {
+      getDashboard: vi.fn().mockResolvedValue(dashboard),
+      refresh: vi.fn().mockResolvedValue(dashboard),
+      addProfile: vi.fn(),
+      removeProfile: vi.fn(),
+      renameProfile,
+      beginLogin: vi.fn(),
+      launchProfile: vi.fn(),
+      chooseCliExecutable: vi.fn(),
+      resetCliExecutable: vi.fn(),
+      setAlertThreshold: vi.fn(),
+      openProviderUsage: vi.fn(),
+      openEvidence: vi.fn(),
+    };
+    render(<App />);
+    await screen.findByText("Your AI runway,");
+
+    await user.click(
+      screen.getByRole("button", { name: /Rename Codex Work/i }),
+    );
+    const dialog = screen.getByRole("dialog", { name: /Rename account/i });
+    const input = within(dialog).getByLabelText("Account label");
+    await user.clear(input);
+    await user.type(input, "Codex Client");
+    await user.click(
+      within(dialog).getByRole("button", { name: /Save label/i }),
+    );
+
+    expect(renameProfile).toHaveBeenCalledWith("codex-managed", "Codex Client");
   });
 });

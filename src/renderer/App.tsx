@@ -5,6 +5,7 @@ import {
   CircleHelp,
   Gauge,
   LayoutDashboard,
+  Pencil,
   Plus,
   RefreshCw,
   Settings,
@@ -219,11 +220,15 @@ function QuotaMeter({ window }: { window: QuotaWindow }) {
 function AccountCard({
   account,
   onRemove,
+  onRename,
   onVerifyUsage,
+  ambiguous = false,
 }: {
   account: AccountSnapshot;
   onRemove: (account: AccountSnapshot) => Promise<void>;
+  onRename: (account: AccountSnapshot) => void;
   onVerifyUsage: (provider: ProviderId) => Promise<void>;
+  ambiguous?: boolean;
 }) {
   const meta = providerMeta[account.provider];
 
@@ -235,13 +240,28 @@ function AccountCard({
       <div className="account-card-top">
         <div className="provider-identity">
           <span className="provider-mark">{meta.mark}</span>
-          <div>
+          <div className="provider-identity-text">
             <div className="eyebrow">{meta.label}</div>
             <h3>{account.displayName}</h3>
+            {ambiguous && (
+              <span className="account-disambiguator">
+                {account.identity ?? `#${account.id.slice(0, 8)}`}
+              </span>
+            )}
           </div>
         </div>
         <div className="account-card-actions">
           <span className="provider-live-dot" title="Local profile" />
+          {account.isManaged && (
+            <button
+              className="rename-profile-button"
+              onClick={() => onRename(account)}
+              aria-label={`Rename ${account.displayName}`}
+              title="Rename managed profile"
+            >
+              <Pencil size={14} />
+            </button>
+          )}
           {account.isManaged && (
             <button
               className="remove-profile-button"
@@ -603,6 +623,111 @@ function AddProfileDialog({
   );
 }
 
+function RenameProfileDialog({
+  account,
+  onClose,
+  onRenamed,
+}: {
+  account: AccountSnapshot;
+  onClose: () => void;
+  onRenamed: (message: string) => void;
+}) {
+  const dialogRef = useModalDialog(onClose);
+  const [displayName, setDisplayName] = useState(account.displayName);
+  const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const bridge = window.quotaMonitor;
+    if (!bridge) {
+      setError(
+        "Renaming is available in the desktop app, not browser preview.",
+      );
+      return;
+    }
+    setIsSaving(true);
+    setError(null);
+    try {
+      const result = await bridge.renameProfile(account.id, displayName);
+      if (result.ok) {
+        onRenamed(result.message);
+        onClose();
+      } else {
+        setError(result.message);
+      }
+    } catch {
+      setError("The account could not be renamed. Try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        ref={dialogRef}
+        className="profile-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="rename-profile-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="dialog-heading">
+          <div>
+            <span className="eyebrow">
+              {providerMeta[account.provider].label}
+            </span>
+            <h2 id="rename-profile-title">Rename account</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="Close">
+            <X size={18} />
+          </button>
+        </div>
+        <p>
+          Renaming changes only the local label. Sign-in, quota, and the
+          isolated provider home are unaffected.
+        </p>
+        <form onSubmit={(event) => void submit(event)}>
+          <label htmlFor="rename-profile-name">Account label</label>
+          <input
+            id="rename-profile-name"
+            value={displayName}
+            onChange={(event) => setDisplayName(event.target.value)}
+            autoFocus
+            maxLength={48}
+          />
+          {error && (
+            <div className="form-error" role="alert">
+              {error}
+            </div>
+          )}
+          <div className="dialog-actions">
+            <button
+              type="button"
+              className="secondary-action"
+              onClick={onClose}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="primary-action"
+              disabled={
+                isSaving ||
+                displayName.trim().length < 2 ||
+                displayName.trim() === account.displayName
+              }
+            >
+              {isSaving ? "Saving…" : "Save label"} <ArrowRight size={16} />
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
 function CliSettingsDialog({
   dashboard,
   onClose,
@@ -774,6 +899,9 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [showAddProfile, setShowAddProfile] = useState(false);
   const [showCliSettings, setShowCliSettings] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<AccountSnapshot | null>(
+    null,
+  );
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const loadDashboard = useCallback(async (force = false) => {
@@ -828,6 +956,10 @@ export default function App() {
     },
     [loadDashboard],
   );
+
+  const handleRenameProfile = useCallback((account: AccountSnapshot) => {
+    setRenameTarget(account);
+  }, []);
 
   const handleEvidence = useCallback(async () => {
     const bridge = window.quotaMonitor;
@@ -906,6 +1038,19 @@ export default function App() {
     [dashboard],
   );
 
+  // Labels that collide within a provider (including legacy duplicate data) so
+  // their cards can show a disambiguator instead of looking identical.
+  const ambiguousLabelKeys = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const account of dashboard?.accounts ?? []) {
+      const key = `${account.provider}:${account.displayName.trim().toLocaleLowerCase()}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return new Set(
+      [...counts].filter(([, count]) => count > 1).map(([key]) => key),
+    );
+  }, [dashboard]);
+
   if (!dashboard) {
     return (
       <div className="loading-screen">
@@ -915,7 +1060,8 @@ export default function App() {
     );
   }
 
-  const isDialogOpen = showAddProfile || showCliSettings;
+  const isDialogOpen =
+    showAddProfile || showCliSettings || renameTarget !== null;
 
   return (
     <div className={`app-shell platform-${dashboard.platform.id}`}>
@@ -1057,7 +1203,11 @@ export default function App() {
                     key={account.id}
                     account={account}
                     onRemove={handleRemoveProfile}
+                    onRename={handleRenameProfile}
                     onVerifyUsage={handleProviderUsage}
+                    ambiguous={ambiguousLabelKeys.has(
+                      `${account.provider}:${account.displayName.trim().toLocaleLowerCase()}`,
+                    )}
                   />
                 ))}
               </div>
@@ -1104,6 +1254,16 @@ export default function App() {
           dashboard={dashboard}
           onClose={() => setShowCliSettings(false)}
           onChanged={() => loadDashboard(true)}
+        />
+      )}
+      {renameTarget && (
+        <RenameProfileDialog
+          account={renameTarget}
+          onClose={() => setRenameTarget(null)}
+          onRenamed={(message) => {
+            setActionMessage(message);
+            void loadDashboard(true);
+          }}
         />
       )}
     </div>

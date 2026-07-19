@@ -58,6 +58,13 @@ function providerName(provider: ProviderId): string {
   return provider === "claude" ? "Claude Code" : "Codex";
 }
 
+// A short, non-secret handle so confirmations name the exact profile even when
+// legacy duplicate labels exist.
+function profileHandle(provider: ProviderId, id: string): string {
+  const shortId = id.includes("-") ? id.slice(0, 8) : id;
+  return `${providerName(provider)} · ${shortId}`;
+}
+
 async function pathExists(candidate: string): Promise<boolean> {
   try {
     await lstat(candidate);
@@ -126,7 +133,10 @@ export function registerIpcHandlers({
     const confirmation = await dialog.showMessageBox(getMainWindow(), {
       type: "warning",
       title: "Remove account profile?",
-      message: `Remove ${profile.displayName} from QuotaDeck?`,
+      message: `Remove ${profile.displayName} (${profileHandle(
+        profile.provider,
+        profile.id,
+      )}) from QuotaDeck?`,
       detail:
         "Signing out asks the official provider client to revoke or remove its login first. The isolated provider home and local sessions are then moved to the system Trash or Recycle Bin.",
       buttons: [
@@ -185,6 +195,35 @@ export function registerIpcHandlers({
       };
     }
   });
+  ipcMain.handle(
+    "profiles:rename",
+    async (event, profileId: string, displayName: string) => {
+      assertTrustedSender(event);
+      const profile = await profileStore.get(profileId);
+      if (!profile) {
+        return { ok: false, message: "Account profile was not found." };
+      }
+      if (!profile.isManaged) {
+        return {
+          ok: false,
+          message: "Current provider profiles cannot be renamed.",
+        };
+      }
+      try {
+        const updated = await profileStore.rename(profileId, displayName);
+        dashboardRequests.invalidate();
+        return { ok: true, message: `Renamed to ${updated.displayName}.` };
+      } catch (error) {
+        return {
+          ok: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : "The account could not be renamed.",
+        };
+      }
+    },
+  );
   ipcMain.handle("profiles:login", async (event, profileId: string) => {
     assertTrustedSender(event);
     const profile = await profileStore.get(profileId);
