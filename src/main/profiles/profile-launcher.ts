@@ -8,6 +8,7 @@ import {
   type PrepareClaudeStatusLineOptions,
 } from "./claude-statusline-launch";
 import { createProfileEnvironment } from "./profile-environment";
+import { resolveCliInvocation } from "../settings/resolve-cli-command";
 import type { ProviderProfile } from "./profile-store";
 import {
   createTerminalLaunchCandidates,
@@ -60,7 +61,7 @@ export function createProfileLaunchSpec(
   };
 }
 
-async function launchCandidate(
+export async function launchCandidate(
   candidate: TerminalLaunchCandidate,
 ): Promise<void> {
   if (candidate.waitForExit) {
@@ -83,10 +84,38 @@ async function launchCandidate(
       windowsHide: false,
       shell: false,
     });
-    child.once("error", reject);
+    let settled = false;
+    let graceTimer: NodeJS.Timeout | undefined;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      if (graceTimer) clearTimeout(graceTimer);
+      if (error) reject(error);
+      else resolve();
+    };
+    child.once("error", (error) => finish(error));
+    // A terminal that spawns then exits nonzero on incompatible args counts as
+    // a failure so the candidate loop can fall through to the next terminal; a
+    // clean early exit (fire-and-forget launchers) still counts as success.
+    child.once("exit", (code) => {
+      if (typeof code === "number" && code !== 0) {
+        finish(
+          new Error(
+            `Terminal "${candidate.executable}" exited with code ${code}.`,
+          ),
+        );
+      } else {
+        finish();
+      }
+    });
     child.once("spawn", () => {
       child.unref();
-      resolve();
+      if (!candidate.earlyExitGraceMs) {
+        finish();
+        return;
+      }
+      // A process still running after the grace window is a healthy terminal.
+      graceTimer = setTimeout(() => finish(), candidate.earlyExitGraceMs);
     });
   });
 }
@@ -125,11 +154,20 @@ export async function launchProfile(
     options.command,
   );
   try {
-    await execFileAsync(spec.executable, ["--version"], {
+    // Resolve the command through PATH/PATHEXT so Windows npm/pnpm .cmd shims
+    // are reachable and invoked safely instead of hitting EINVAL on execFile.
+    const invocation = await resolveCliInvocation(
+      spec.executable,
+      ["--version"],
+      spec.environment,
+      platform,
+    );
+    await execFileAsync(invocation.file, invocation.args, {
       env: spec.environment,
       timeout: 5_000,
       windowsHide: true,
       maxBuffer: 64_000,
+      windowsVerbatimArguments: invocation.windowsVerbatimArguments,
     });
   } catch {
     const providerName =

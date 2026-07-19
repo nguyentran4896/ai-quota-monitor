@@ -89,6 +89,34 @@ describe("App", () => {
     expect(screen.getByText("⌘ K")).toBeInTheDocument();
   });
 
+  it("tags the shell with the platform so Linux can drop the custom title bar", async () => {
+    const linuxDashboard = {
+      ...demoDashboard,
+      mode: "live" as const,
+      platform: {
+        id: "linux" as const,
+        label: "Linux",
+        shortcutModifier: "Ctrl" as const,
+      },
+    };
+    window.quotaMonitor = {
+      getDashboard: vi.fn().mockResolvedValue(linuxDashboard),
+      refresh: vi.fn().mockResolvedValue(linuxDashboard),
+      addProfile: vi.fn(),
+      removeProfile: vi.fn(),
+      beginLogin: vi.fn(),
+      launchProfile: vi.fn(),
+      chooseCliExecutable: vi.fn(),
+      resetCliExecutable: vi.fn(),
+      setAlertThreshold: vi.fn(),
+      openProviderUsage: vi.fn(),
+      openEvidence: vi.fn(),
+    };
+    const { container } = render(<App />);
+    await screen.findByText("Your AI runway,");
+    expect(container.querySelector(".app-shell")).toHaveClass("platform-linux");
+  });
+
   it("shows simple per-provider CLI repair controls", async () => {
     render(<App />);
     await screen.findByText("Your AI runway,");

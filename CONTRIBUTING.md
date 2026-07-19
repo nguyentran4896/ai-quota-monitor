@@ -12,6 +12,12 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
+On Windows, use a checkout on a Windows drive and follow the
+[native Windows development guide](docs/windows-development.md). The initial
+PowerShell bootstrap installs the pinned pnpm version without WSL; after that,
+`pnpm windows:setup`, `pnpm windows:dev`, and `pnpm windows:check` provide the
+repeatable native workflow.
+
 Before opening a pull request:
 
 ```sh

@@ -1,5 +1,5 @@
 {
-  "name": "ai-quota-monitor",
+  "name": "quotadeck",
   "version": "0.1.0",
   "private": true,
   "license": "Apache-2.0",
@@ -40,6 +40,11 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "pnpm format:check && pnpm typecheck && pnpm test && pnpm build",
+    "windows:setup": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/windows-setup.ps1",
+    "windows:doctor": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/windows-doctor.ps1",
+    "windows:dev": "pnpm windows:doctor && pnpm dev",
+    "windows:check": "pnpm windows:doctor && pnpm check",
+    "windows:package": "pnpm windows:doctor && pnpm package:win --x64 --publish never",
     "assets:icon": "node scripts/render-icon.mjs",
     "smoke:collector": "node scripts/smoke-collector.mjs",
     "package": "pnpm assets:icon && pnpm build && electron-builder",

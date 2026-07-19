@@ -5,6 +5,8 @@ import type {
   ProviderCommandSource,
   ProviderId,
 } from "../../shared/contracts";
+import { createProfileEnvironment } from "../profiles/profile-environment";
+import { resolveCliInvocation } from "./resolve-cli-command";
 
 const execFileAsync = promisify(execFile);
 
@@ -60,11 +62,25 @@ export async function probeProviderCommand(
 ): Promise<ProviderCliStatus> {
   const providerName = provider === "claude" ? "Claude Code" : "Codex";
   try {
-    const { stdout, stderr } = await execFileAsync(command, ["--version"], {
-      timeout: 5_000,
-      windowsHide: true,
-      maxBuffer: 64_000,
-    });
+    // Resolve against the same augmented PATH the launcher uses so npm/pnpm
+    // .cmd shims (and explicitly selected shims) are reachable on Windows.
+    const environment = createProfileEnvironment(provider, null);
+    const invocation = await resolveCliInvocation(
+      command,
+      ["--version"],
+      environment,
+    );
+    const { stdout, stderr } = await execFileAsync(
+      invocation.file,
+      invocation.args,
+      {
+        env: environment,
+        timeout: 5_000,
+        windowsHide: true,
+        maxBuffer: 64_000,
+        windowsVerbatimArguments: invocation.windowsVerbatimArguments,
+      },
+    );
     const rawLine = `${stdout}${stderr}`.trim().split(/\r?\n/, 1)[0] ?? "";
     const parsed = parseProviderCliVersion(provider, rawLine);
     return {
