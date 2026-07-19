@@ -134,6 +134,53 @@ function accountNeedsSetup(account: AccountSnapshot): boolean {
   );
 }
 
+// A specific reason the quota number is absent, replacing a generic
+// "Quota hidden". Order matters: the most actionable state wins.
+function quotaAvailabilityLabel(account: AccountSnapshot): string {
+  const remaining = availablePercent(account);
+  if (remaining !== null) return `${Math.round(remaining)}% free`;
+  if (
+    account.lifecycle === "signed-out" ||
+    account.lifecycle === "pending-login" ||
+    account.authMode === "signed-out"
+  ) {
+    return "Signed out";
+  }
+  if (account.lifecycle === "provider-error") return "CLI unavailable";
+  if (account.quotaStatus === "needs-first-response")
+    return "Awaiting first response";
+  if (account.billingMode === "api" || account.billingMode === "external")
+    return "API billing";
+  return "Provider data unavailable";
+}
+
+// A three-way tone plus accessible text for the account status indicator, so it
+// is not always green and screen readers get a meaningful label.
+function accountStatus(account: AccountSnapshot): {
+  tone: "ok" | "warn" | "error";
+  text: string;
+} {
+  if (account.lifecycle === "provider-error") {
+    return { tone: "error", text: "Provider CLI unavailable" };
+  }
+  if (account.state === "limited") {
+    return { tone: "warn", text: "Quota limit reached" };
+  }
+  if (
+    account.lifecycle === "pending-login" ||
+    account.lifecycle === "signed-out"
+  ) {
+    return { tone: "warn", text: "Signed out — set up required" };
+  }
+  if (account.lifecycle === "authenticated-unverified") {
+    return { tone: "warn", text: "Awaiting identity confirmation" };
+  }
+  if (account.lifecycle === "verified" && account.state === "ready") {
+    return { tone: "ok", text: "Ready" };
+  }
+  return { tone: "warn", text: "Status unavailable" };
+}
+
 function useModalDialog(onClose: () => void) {
   const dialogRef = useRef<HTMLElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(
@@ -188,8 +235,15 @@ function useModalDialog(onClose: () => void) {
   return dialogRef;
 }
 
-function QuotaMeter({ window }: { window: QuotaWindow }) {
+function QuotaMeter({
+  window,
+  accountName,
+}: {
+  window: QuotaWindow;
+  accountName: string;
+}) {
   const available = Math.max(0, Math.round(100 - window.usedPercent));
+  const used = Math.round(window.usedPercent);
   return (
     <div className="quota-meter">
       <div className="meter-heading">
@@ -205,12 +259,14 @@ function QuotaMeter({ window }: { window: QuotaWindow }) {
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={available}
-        aria-label={`${available}% available`}
+        aria-label={`${accountName} — ${window.label}: ${available}% available, ${used}% used. ${resetLabel(
+          window.resetsAt,
+        )}`}
       >
         <span style={{ width: `${available}%` }} />
       </div>
       <div className="meter-footer">
-        <span>{Math.round(window.usedPercent)}% used</span>
+        <span>{used}% used</span>
         <span>{resetLabel(window.resetsAt)}</span>
       </div>
     </div>
@@ -231,6 +287,7 @@ function AccountCard({
   ambiguous?: boolean;
 }) {
   const meta = providerMeta[account.provider];
+  const status = accountStatus(account);
 
   return (
     <article
@@ -251,7 +308,12 @@ function AccountCard({
           </div>
         </div>
         <div className="account-card-actions">
-          <span className="provider-live-dot" title="Local profile" />
+          <span
+            className={`provider-live-dot tone-${status.tone}`}
+            title={status.text}
+            role="img"
+            aria-label={`Status: ${status.text}`}
+          />
           {account.isManaged && (
             <button
               className="rename-profile-button"
@@ -310,7 +372,11 @@ function AccountCard({
       {account.quotaWindows.length ? (
         <div className="quota-stack">
           {account.quotaWindows.map((window) => (
-            <QuotaMeter key={window.id} window={window} />
+            <QuotaMeter
+              key={window.id}
+              window={window}
+              accountName={account.displayName}
+            />
           ))}
         </div>
       ) : (
@@ -399,21 +465,24 @@ function SmartSwitcher({
           <span className="eyebrow">Workspace</span>
           <h2>Smart switcher</h2>
         </div>
-        <span className="shortcut">{shortcutModifier} K</span>
+        <span className="shortcut" aria-hidden="true">
+          {shortcutModifier} K
+        </span>
       </div>
       <p className="panel-intro">
         Choose an account, verify its identity and billing mode, then launch a
         separate session.
       </p>
 
-      <div className="switcher-list" role="listbox" aria-label="AI accounts">
+      <div
+        className="switcher-list"
+        role="listbox"
+        aria-label="AI accounts"
+        aria-keyshortcuts={shortcutModifier === "⌘" ? "Meta+K" : "Control+K"}
+      >
         {accounts.map((account, index) => {
           const meta = providerMeta[account.provider];
-          const remaining = availablePercent(account);
-          const available =
-            remaining === null
-              ? "Quota hidden"
-              : `${Math.round(remaining)}% free`;
+          const available = quotaAvailabilityLabel(account);
           const isSelected = account.id === selectedAccount?.id;
           return (
             <button
@@ -439,6 +508,9 @@ function SmartSwitcher({
               }}
               role="option"
               aria-selected={isSelected}
+              // Roving tabindex: only the selected option is in the tab order;
+              // arrow keys move selection and focus across the rest.
+              tabIndex={isSelected ? 0 : -1}
             >
               <span className={`provider-mark small accent-${meta.accent}`}>
                 {meta.mark}

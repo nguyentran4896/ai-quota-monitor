@@ -136,7 +136,7 @@ button:focus-visible {
 .nav-item small {
   margin-left: auto;
   color: rgba(255, 255, 255, 0.45);
-  font-size: 8px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -194,7 +194,7 @@ button:focus-visible {
 }
 .profile-chip small {
   color: rgba(255, 255, 255, 0.45);
-  font-size: 9px;
+  font-size: 11px;
   margin-top: 2px;
 }
 .profile-chip svg {
@@ -314,7 +314,7 @@ button:focus-visible {
 .eyebrow {
   color: #79837f;
   text-transform: uppercase;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1;
   font-weight: 700;
   letter-spacing: 0.13em;
@@ -380,7 +380,7 @@ button:focus-visible {
 }
 .summary-stat span {
   color: #8c9390;
-  font-size: 9px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.07em;
 }
@@ -428,7 +428,7 @@ button:focus-visible {
 }
 .last-updated {
   color: #a0a6a3;
-  font-size: 9px;
+  font-size: 11px;
 }
 .account-grid {
   display: grid;
@@ -554,12 +554,25 @@ button:focus-visible {
   color: #a44e34;
 }
 .provider-live-dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   margin-top: 7px;
   border-radius: 50%;
-  background: #50b68f;
-  box-shadow: 0 0 0 4px #e7f4ed;
+  background: #7c817e;
+  box-shadow: 0 0 0 4px #eeeeea;
+}
+/* Distinct status tones so the indicator is not always green. */
+.provider-live-dot.tone-ok {
+  background: #2f9c73;
+  box-shadow: 0 0 0 4px #e2f2ea;
+}
+.provider-live-dot.tone-warn {
+  background: #cf9330;
+  box-shadow: 0 0 0 4px #f6ecd7;
+}
+.provider-live-dot.tone-error {
+  background: #bf4f36;
+  box-shadow: 0 0 0 4px #f6ddd5;
 }
 .account-meta-row {
   display: flex;
@@ -571,7 +584,7 @@ button:focus-visible {
 .plan-pill {
   border-radius: 12px;
   padding: 5px 8px;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -625,7 +638,7 @@ button:focus-visible {
   gap: 8px 10px;
   margin: -12px 0 18px;
   color: #68736e;
-  font-size: 9px;
+  font-size: 11px;
 }
 .account-safety-row strong {
   color: #394b45;
@@ -633,7 +646,7 @@ button:focus-visible {
 }
 .account-safety-row small {
   margin-left: 4px;
-  font-size: 8px;
+  font-size: 12px;
   font-weight: 700;
 }
 .account-safety-row small.verified {
@@ -648,7 +661,7 @@ button:focus-visible {
   padding: 4px 7px;
   background: #e5f1ea;
   color: #31735e;
-  font-size: 8px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -665,7 +678,7 @@ button:focus-visible {
   padding: 4px 7px;
   background: #f0efea;
   color: #68736e;
-  font-size: 8px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -682,7 +695,7 @@ button:focus-visible {
 .profile-scope {
   margin: -10px 0 16px;
   color: #929895;
-  font-size: 8px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -705,7 +718,7 @@ button:focus-visible {
 }
 .meter-window {
   color: #7c8581;
-  font-size: 9px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -726,7 +739,7 @@ button:focus-visible {
   display: flex;
   justify-content: space-between;
   color: #9ba19e;
-  font-size: 9px;
+  font-size: 11px;
 }
 .quota-stack {
   display: grid;
@@ -762,7 +775,7 @@ button:focus-visible {
 }
 .unavailable-meter p {
   color: #929895;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.45;
   margin: 5px 0 0;
 }
@@ -772,7 +785,7 @@ button:focus-visible {
   border-radius: 9px;
   background: #f4f3ee;
   color: #69736f;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.45;
 }
 .source-row {
@@ -783,7 +796,7 @@ button:focus-visible {
   align-items: center;
   justify-content: space-between;
   color: #9da29f;
-  font-size: 8px;
+  font-size: 12px;
 }
 .source-row span:first-child {
   display: inline-flex;
@@ -800,7 +813,7 @@ button:focus-visible {
   background: transparent;
   color: #39745f;
   cursor: pointer;
-  font-size: 8px;
+  font-size: 12px;
   font-weight: 700;
   text-align: right;
 }
@@ -839,7 +852,7 @@ button:focus-visible {
 .insight-strip p {
   color: #708078;
   margin: 3px 0 0;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.4;
 }
 .provider-recommendations {
@@ -857,7 +870,7 @@ button:focus-visible {
   align-items: center;
   gap: 5px;
   cursor: pointer;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -882,7 +895,7 @@ button:focus-visible {
   border: 1px solid #deded8;
   background: #f3f2ed;
   color: #909693;
-  font-size: 9px;
+  font-size: 11px;
 }
 .panel-intro {
   margin: -4px 0 18px;
@@ -937,7 +950,7 @@ button:focus-visible {
 .switcher-copy small {
   color: #909693;
   margin-top: 3px;
-  font-size: 8px;
+  font-size: 12px;
 }
 .selected-check {
   width: 19px;
@@ -978,13 +991,13 @@ button:focus-visible {
   border-radius: 7px;
   background: #edf4ef;
   color: #4d7264;
-  font-size: 8px;
+  font-size: 12px;
   line-height: 1.4;
 }
 .safety-note {
   color: #9aa09d;
   margin: 11px 2px 0;
-  font-size: 8px;
+  font-size: 12px;
   line-height: 1.45;
   display: flex;
   align-items: flex-start;
@@ -1053,7 +1066,7 @@ button:focus-visible {
 }
 .profile-dialog label {
   color: #58645f;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
@@ -1133,7 +1146,7 @@ button:focus-visible {
   background: #fff0e9;
   border-radius: 7px;
   padding: 8px 10px;
-  font-size: 9px;
+  font-size: 11px;
 }
 .dialog-actions {
   display: flex;
@@ -1171,7 +1184,7 @@ button:focus-visible {
 .cli-status-card span {
   border-radius: 9px;
   padding: 3px 6px;
-  font-size: 8px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -1192,7 +1205,7 @@ button:focus-visible {
 }
 .cli-status-card small {
   color: #929895;
-  font-size: 8px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -1224,7 +1237,7 @@ button:focus-visible {
   max-width: 360px;
   margin: 5px 0 0;
   color: #707b76;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.45;
 }
 .alert-settings-row label {
@@ -1234,7 +1247,7 @@ button:focus-visible {
 }
 .alert-settings-row label span {
   color: #7d8581;
-  font-size: 8px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -1261,7 +1274,7 @@ button:focus-visible {
   background: transparent;
   color: #39745f;
   cursor: pointer;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
 }
 .dialog-status {
@@ -1324,5 +1337,40 @@ button:focus-visible {
     scroll-behavior: auto !important;
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Windows high-contrast / forced-colors: system colors flatten backgrounds, so
+   keep boundaries and the status dot visible with borders and system colors. */
+@media (forced-colors: active) {
+  .account-card,
+  .switcher-panel,
+  .profile-dialog,
+  .summary-card,
+  .status-pill,
+  .plan-pill,
+  .auth-pill,
+  .billing-pill,
+  .switcher-item {
+    border: 1px solid CanvasText;
+  }
+  .provider-live-dot,
+  .provider-live-dot.tone-ok,
+  .provider-live-dot.tone-warn,
+  .provider-live-dot.tone-error {
+    border: 1px solid CanvasText;
+    box-shadow: none;
+    forced-color-adjust: none;
+  }
+  .provider-live-dot.tone-warn {
+    background: Mark;
+  }
+  .provider-live-dot.tone-error {
+    background: LinkText;
+  }
+  button:focus-visible,
+  .switcher-item:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
   }
 }

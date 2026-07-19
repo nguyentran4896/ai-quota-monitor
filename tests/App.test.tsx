@@ -15,8 +15,11 @@ describe("App", () => {
     render(<App />);
     expect(await screen.findByText("Your AI runway,")).toBeInTheDocument();
     expect(screen.getAllByText("Claude — Studio")).toHaveLength(2);
+    // The accessible name carries account, window, usage, and reset context.
     expect(
-      screen.getByRole("progressbar", { name: "97% available" }),
+      screen.getByRole("progressbar", {
+        name: /Codex — Personal — 1-week window: 97% available, 3% used/,
+      }),
     ).toBeInTheDocument();
     expect(screen.getByText("Browser preview")).toBeInTheDocument();
     expect(screen.getByText("Ctrl K")).toBeInTheDocument();
@@ -166,11 +169,16 @@ describe("App", () => {
     render(<App />);
     await screen.findByText("Your AI runway,");
     const options = screen.getAllByRole("option");
+    // Roving tabindex: only the selected option is initially tabbable.
+    expect(options[0]).toHaveAttribute("tabindex", "0");
+    expect(options[1]).toHaveAttribute("tabindex", "-1");
     options[0]?.focus();
 
     await user.keyboard("{ArrowDown}");
     expect(options[1]).toHaveFocus();
     expect(options[1]).toHaveAttribute("aria-selected", "true");
+    expect(options[1]).toHaveAttribute("tabindex", "0");
+    expect(options[0]).toHaveAttribute("tabindex", "-1");
     await user.keyboard("{ArrowUp}");
     expect(options[0]).toHaveFocus();
   });
@@ -300,6 +308,58 @@ describe("App", () => {
 
     expect(beginLogin).toHaveBeenCalledWith("claude-new");
     expect(launchProfile).not.toHaveBeenCalled();
+  });
+
+  it("uses specific quota-unavailable states, a distinct status dot, and key shortcuts", async () => {
+    const errored = {
+      ...demoDashboard.accounts[0]!,
+      id: "claude-error",
+      displayName: "Claude Broken",
+      identity: null,
+      identityVerified: false,
+      isManaged: true,
+      isActive: false,
+      authMode: "unknown" as const,
+      billingMode: "unknown" as const,
+      quotaStatus: "unavailable" as const,
+      state: "unknown" as const,
+      lifecycle: "provider-error" as const,
+      providerError: "cli-missing" as const,
+      quotaWindows: [],
+    };
+    const dashboard = { ...demoDashboard, accounts: [errored] };
+    window.quotaMonitor = {
+      getDashboard: vi.fn().mockResolvedValue(dashboard),
+      refresh: vi.fn().mockResolvedValue(dashboard),
+      addProfile: vi.fn(),
+      removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
+      beginLogin: vi.fn(),
+      launchProfile: vi.fn(),
+      chooseCliExecutable: vi.fn(),
+      resetCliExecutable: vi.fn(),
+      setAlertThreshold: vi.fn(),
+      openProviderUsage: vi.fn(),
+      openEvidence: vi.fn(),
+    };
+    render(<App />);
+    await screen.findByText("Your AI runway,");
+
+    // Not a generic "Quota hidden".
+    expect(screen.getByText(/CLI unavailable/)).toBeInTheDocument();
+    expect(screen.queryByText("Quota hidden")).not.toBeInTheDocument();
+
+    // The status dot is distinct and carries meaningful accessible text.
+    const card = screen.getByRole("article", { name: "Claude Broken account" });
+    const dot = within(card).getByRole("img", {
+      name: "Status: Provider CLI unavailable",
+    });
+    expect(dot).toHaveClass("tone-error");
+
+    // Ctrl/⌘+K is exposed as a keyboard shortcut on the selector.
+    expect(
+      screen.getByRole("listbox", { name: "AI accounts" }),
+    ).toHaveAttribute("aria-keyshortcuts", "Control+K");
   });
 
   it("renders a full 48-character Unicode/emoji label with intact card actions", async () => {
