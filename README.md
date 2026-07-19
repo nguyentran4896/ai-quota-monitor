@@ -56,6 +56,25 @@ Requirements:
 - pnpm 11;
 - the official Claude Code and/or Codex standalone CLI on `PATH`.
 
+### Native Windows development
+
+Windows development runs directly in PowerShell from a checkout on a Windows
+drive. It does not require WSL, Docker, or Unix shell tools. The one-time setup
+also creates a persistent user-level `pnpm` shim instead of depending on an
+editor's bundled runtime:
+
+```powershell
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\scripts\windows-setup.ps1
+pnpm windows:dev
+```
+
+Use `pnpm windows:doctor`, `pnpm windows:check`, and
+`pnpm windows:package` for environment verification, the full quality suite, and
+a local Windows installer. See the complete
+[native Windows development guide](docs/windows-development.md).
+
+### Other native platforms
+
 ```sh
 pnpm install --frozen-lockfile
 pnpm dev
