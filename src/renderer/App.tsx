@@ -119,6 +119,20 @@ const authModeLabels = {
   "signed-out": "Signed out",
 } as const;
 
+// A managed profile routes through the official sign-in flow ("Set up this
+// account") until its lifecycle reaches a launchable state. This is driven by
+// the explicit lifecycle — never re-derived from authMode — so a brand-new
+// profile (or one whose CLI probe failed) never shows a launch that would only
+// be blocked by the identity/billing safety gate.
+function accountNeedsSetup(account: AccountSnapshot): boolean {
+  return (
+    account.isManaged &&
+    (account.lifecycle === "pending-login" ||
+      account.lifecycle === "signed-out" ||
+      account.lifecycle === "provider-error")
+  );
+}
+
 function useModalDialog(onClose: () => void) {
   const dialogRef = useRef<HTMLElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(
@@ -331,8 +345,9 @@ function SmartSwitcher({
   const [isLaunching, setIsLaunching] = useState(false);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const selectedAccount = accounts.find((account) => account.id === selected);
-  const needsSetup =
-    selectedAccount?.isManaged && selectedAccount.authMode === "signed-out";
+  const needsSetup = selectedAccount
+    ? accountNeedsSetup(selectedAccount)
+    : false;
 
   const handleAction = async () => {
     if (!selectedAccount) return;
@@ -784,9 +799,8 @@ export default function App() {
       setActionMessage("Launch actions are available in the desktop app.");
       return;
     }
-    const needsSetup = account.isManaged && account.authMode === "signed-out";
     try {
-      const result = needsSetup
+      const result = accountNeedsSetup(account)
         ? await bridge.beginLogin(account.id)
         : await bridge.launchProfile(account.id);
       setActionMessage(result.message);

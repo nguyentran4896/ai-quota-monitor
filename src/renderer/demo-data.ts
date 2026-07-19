@@ -46,6 +46,8 @@ export const demoDashboard: DashboardSnapshot = {
       billingMode: "subscription",
       quotaStatus: "needs-first-response",
       state: "ready",
+      lifecycle: "verified",
+      providerError: null,
       isActive: true,
       isManaged: false,
       quotaWindows: [],
@@ -68,6 +70,8 @@ export const demoDashboard: DashboardSnapshot = {
       billingMode: "subscription",
       quotaStatus: "fresh",
       state: "ready",
+      lifecycle: "verified",
+      providerError: null,
       isActive: true,
       isManaged: false,
       quotaWindows: [

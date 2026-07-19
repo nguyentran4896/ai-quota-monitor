@@ -219,6 +219,7 @@ export function mapCodexAppServerSnapshot(
     plan,
     authMode,
     billingMode,
+    providerError: null,
     quotaStatus: classifyQuotaStatus({
       authMode,
       billingMode,

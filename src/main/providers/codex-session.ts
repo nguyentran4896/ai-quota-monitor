@@ -179,6 +179,7 @@ export async function collectCodexSnapshot(
         typeof rateLimits.plan_type === "string" ? rateLimits.plan_type : null,
       authMode,
       billingMode,
+      providerError: null,
       quotaStatus: classifyQuotaStatus({
         authMode,
         billingMode,
@@ -213,6 +214,7 @@ export async function collectCodexSnapshot(
     plan: null,
     authMode: "unknown",
     billingMode: "unknown",
+    providerError: null,
     quotaStatus: "unavailable",
     state: "unknown",
     isActive: !isManaged,

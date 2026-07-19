@@ -25,6 +25,7 @@ const snapshot: ProviderAccountSnapshot = {
   plan: "pro",
   authMode: "subscription",
   billingMode: "subscription",
+  providerError: null,
   quotaStatus: "fresh",
   state: "ready",
   isActive: false,
@@ -74,6 +75,28 @@ describe("evaluateProfileLaunchSafety", () => {
         ...snapshot,
         identity: null,
         identityVerifier: null,
+      }),
+    ).toMatchObject({ kind: "block" });
+  });
+
+  it("blocks a work launch for a signed-out profile", () => {
+    expect(
+      evaluateProfileLaunchSafety(profile, {
+        ...snapshot,
+        authMode: "signed-out",
+        billingMode: "unknown",
+        identity: null,
+        identityVerifier: null,
+      }),
+    ).toMatchObject({ kind: "block" });
+  });
+
+  it("blocks a work launch when identity and billing are unverifiable", () => {
+    expect(
+      evaluateProfileLaunchSafety(profile, {
+        ...snapshot,
+        authMode: "unknown",
+        billingMode: "unknown",
       }),
     ).toMatchObject({ kind: "block" });
   });

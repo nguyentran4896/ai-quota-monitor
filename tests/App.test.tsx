@@ -243,4 +243,57 @@ describe("App", () => {
     expect(launchProfile).toHaveBeenCalledWith("codex-api");
     expect(beginLogin).not.toHaveBeenCalled();
   });
+
+  it("offers setup (not launch) for a newly created managed profile and calls beginLogin", async () => {
+    const user = userEvent.setup();
+    // A freshly created managed profile: signed out, never verified. Even if the
+    // CLI probe had failed it lands in pending-login, so it must offer setup.
+    const newProfile = {
+      ...demoDashboard.accounts[0]!,
+      id: "claude-new",
+      displayName: "Claude New",
+      identity: null,
+      identityVerified: false,
+      isManaged: true,
+      isActive: false,
+      authMode: "signed-out" as const,
+      billingMode: "unknown" as const,
+      quotaStatus: "signed-out" as const,
+      state: "signed-out" as const,
+      lifecycle: "pending-login" as const,
+      providerError: null,
+    };
+    const dashboard = { ...demoDashboard, accounts: [newProfile] };
+    const beginLogin = vi
+      .fn()
+      .mockResolvedValue({ ok: true, message: "Opening sign-in…" });
+    const launchProfile = vi.fn();
+    window.quotaMonitor = {
+      getDashboard: vi.fn().mockResolvedValue(dashboard),
+      refresh: vi.fn().mockResolvedValue(dashboard),
+      addProfile: vi.fn(),
+      removeProfile: vi.fn(),
+      beginLogin,
+      launchProfile,
+      chooseCliExecutable: vi.fn(),
+      resetCliExecutable: vi.fn(),
+      setAlertThreshold: vi.fn(),
+      openProviderUsage: vi.fn(),
+      openEvidence: vi.fn(),
+    };
+    render(<App />);
+    await screen.findByText("Your AI runway,");
+
+    const setupButton = await screen.findByRole("button", {
+      name: /Set up this account/i,
+    });
+    expect(
+      screen.queryByRole("button", { name: /^Launch/i }),
+    ).not.toBeInTheDocument();
+
+    await user.click(setupButton);
+
+    expect(beginLogin).toHaveBeenCalledWith("claude-new");
+    expect(launchProfile).not.toHaveBeenCalled();
+  });
 });
