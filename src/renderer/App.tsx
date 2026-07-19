@@ -732,15 +732,24 @@ function CliSettingsDialog({
   dashboard,
   onClose,
   onChanged,
+  onAlertThresholdSaved,
 }: {
   dashboard: DashboardSnapshot;
   onClose: () => void;
   onChanged: () => Promise<void>;
+  onAlertThresholdSaved: (threshold: AlertThreshold) => void;
 }) {
   const dialogRef = useModalDialog(onClose);
   const [message, setMessage] = useState<string | null>(null);
   const [busyProvider, setBusyProvider] = useState<ProviderId | null>(null);
-  const [isSavingAlert, setIsSavingAlert] = useState(false);
+  // Optimistic local threshold so the control updates immediately and never
+  // shows the old value beside a success message for the new one.
+  const [threshold, setThreshold] = useState<AlertThreshold>(
+    dashboard.alertThresholdPercent,
+  );
+  const [alertStatus, setAlertStatus] = useState<"idle" | "saving" | "saved">(
+    "idle",
+  );
 
   const changeCommand = async (provider: ProviderId, reset: boolean) => {
     const bridge = window.quotaMonitor;
@@ -764,21 +773,33 @@ function CliSettingsDialog({
 
   const changeAlertThreshold = async (value: string) => {
     const bridge = window.quotaMonitor;
-    const threshold: AlertThreshold =
+    const next: AlertThreshold =
       value === "off" ? null : (Number(value) as 75 | 85 | 95);
+    const previous = threshold;
+    // Update the UI immediately; roll back only if persistence fails. Saving a
+    // preference never waits for a full provider dashboard collection.
+    setThreshold(next);
+    setMessage(null);
     if (!bridge) {
+      setThreshold(previous);
       setMessage("Local alert settings are available in the desktop app.");
       return;
     }
-    setIsSavingAlert(true);
+    setAlertStatus("saving");
     try {
-      const result = await bridge.setAlertThreshold(threshold);
-      setMessage(result.message);
-      if (result.ok) await onChanged();
+      const result = await bridge.setAlertThreshold(next);
+      if (result.ok) {
+        setAlertStatus("saved");
+        onAlertThresholdSaved(next);
+      } else {
+        setThreshold(previous);
+        setAlertStatus("idle");
+        setMessage(result.message);
+      }
     } catch {
+      setThreshold(previous);
+      setAlertStatus("idle");
       setMessage("QuotaDeck could not update the local alert setting.");
-    } finally {
-      setIsSavingAlert(false);
     }
   };
 
@@ -870,8 +891,7 @@ function CliSettingsDialog({
             <span>Alert threshold</span>
             <select
               aria-label="Local quota alert threshold"
-              value={dashboard.alertThresholdPercent ?? "off"}
-              disabled={isSavingAlert}
+              value={threshold ?? "off"}
               onChange={(event) =>
                 void changeAlertThreshold(event.currentTarget.value)
               }
@@ -881,6 +901,11 @@ function CliSettingsDialog({
               <option value="85">85% used</option>
               <option value="95">95% used</option>
             </select>
+            {alertStatus !== "idle" && (
+              <span className="save-status" role="status">
+                {alertStatus === "saving" ? "Saving…" : "Saved"}
+              </span>
+            )}
           </label>
         </div>
         {message && (
@@ -1254,6 +1279,13 @@ export default function App() {
           dashboard={dashboard}
           onClose={() => setShowCliSettings(false)}
           onChanged={() => loadDashboard(true)}
+          onAlertThresholdSaved={(threshold) =>
+            setDashboard((current) =>
+              current
+                ? { ...current, alertThresholdPercent: threshold }
+                : current,
+            )
+          }
         />
       )}
       {renameTarget && (

@@ -302,6 +302,43 @@ describe("App", () => {
     expect(launchProfile).not.toHaveBeenCalled();
   });
 
+  it("saves the alert threshold optimistically without a provider refresh", async () => {
+    const user = userEvent.setup();
+    const refresh = vi.fn().mockResolvedValue(demoDashboard);
+    const setAlertThreshold = vi
+      .fn()
+      .mockResolvedValue({ ok: true, message: "Alerts at 85% used." });
+    window.quotaMonitor = {
+      getDashboard: vi.fn().mockResolvedValue(demoDashboard),
+      refresh,
+      addProfile: vi.fn(),
+      removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
+      beginLogin: vi.fn(),
+      launchProfile: vi.fn(),
+      chooseCliExecutable: vi.fn(),
+      resetCliExecutable: vi.fn(),
+      setAlertThreshold,
+      openProviderUsage: vi.fn(),
+      openEvidence: vi.fn(),
+    };
+    render(<App />);
+    await screen.findByText("Your AI runway,");
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+
+    const dialog = screen.getByRole("dialog", { name: "CLI settings" });
+    const select = within(dialog).getByRole("combobox", {
+      name: "Local quota alert threshold",
+    });
+    await user.selectOptions(select, "85");
+
+    // Control updates immediately and persistence is not a full collection.
+    expect(select).toHaveValue("85");
+    expect(setAlertThreshold).toHaveBeenCalledWith(85);
+    expect(await within(dialog).findByText("Saved")).toBeInTheDocument();
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
   it("renames a managed profile through the rename dialog", async () => {
     const user = userEvent.setup();
     const managed = {
