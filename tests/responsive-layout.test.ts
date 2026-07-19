@@ -19,6 +19,15 @@ describe("responsive layout contract", () => {
     expect(css).not.toMatch(hidden);
   });
 
+  it("lets a long account label ellipsize without shoving the card actions", () => {
+    // Item 4: min-width:0 on the identity text wrapper plus non-shrinking
+    // actions keep a 48-char label from overlapping the dot/rename/remove.
+    expect(css).toMatch(/\.provider-identity-text\s*\{[^}]*min-width:\s*0/);
+    expect(css).toMatch(/\.account-card-actions\s*\{[^}]*flex:\s*0 0 auto/);
+    expect(css).toMatch(/\.account-meta-row\s*\{[^}]*flex-wrap:\s*wrap/);
+    expect(css).toMatch(/\.account-safety-row\s*\{[^}]*flex-wrap:\s*wrap/);
+  });
+
   it("drops the unreachable breakpoint below the 1040px window minimum", () => {
     // Electron's BrowserWindow minWidth is 1040px, so any max-width breakpoint
     // under it is dead code that must be reconciled away.

@@ -563,6 +563,7 @@ button:focus-visible {
 }
 .account-meta-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 7px;
   margin: 18px 0 21px;
 }
@@ -618,9 +619,10 @@ button:focus-visible {
 }
 .account-safety-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px 10px;
   margin: -12px 0 18px;
   color: #68736e;
   font-size: 9px;
@@ -653,6 +655,7 @@ button:focus-visible {
 }
 .account-mode-pills {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 5px;
 }

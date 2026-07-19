@@ -302,6 +302,47 @@ describe("App", () => {
     expect(launchProfile).not.toHaveBeenCalled();
   });
 
+  it("renders a full 48-character Unicode/emoji label with intact card actions", async () => {
+    const label = "🚀 Клиент café — Very Long Account Label 12345 ✅"; // 48 code points
+    const managed = {
+      ...demoDashboard.accounts[0]!,
+      id: "claude-long",
+      displayName: label,
+      isManaged: true,
+      isActive: false,
+      lifecycle: "verified" as const,
+    };
+    const dashboard = { ...demoDashboard, accounts: [managed] };
+    window.quotaMonitor = {
+      getDashboard: vi.fn().mockResolvedValue(dashboard),
+      refresh: vi.fn().mockResolvedValue(dashboard),
+      addProfile: vi.fn(),
+      removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
+      beginLogin: vi.fn(),
+      launchProfile: vi.fn(),
+      chooseCliExecutable: vi.fn(),
+      resetCliExecutable: vi.fn(),
+      setAlertThreshold: vi.fn(),
+      openProviderUsage: vi.fn(),
+      openEvidence: vi.fn(),
+    };
+    render(<App />);
+    await screen.findByText("Your AI runway,");
+
+    const card = screen.getByRole("article", { name: `${label} account` });
+    expect(within(card).getByRole("heading", { level: 3 })).toHaveTextContent(
+      label,
+    );
+    // The rename and remove controls remain reachable next to the long label.
+    expect(
+      within(card).getByRole("button", { name: `Rename ${label}` }),
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByRole("button", { name: `Remove ${label}` }),
+    ).toBeInTheDocument();
+  });
+
   it("saves the alert threshold optimistically without a provider refresh", async () => {
     const user = userEvent.setup();
     const refresh = vi.fn().mockResolvedValue(demoDashboard);
