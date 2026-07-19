@@ -35,6 +35,7 @@ function unsupportedManagedProfile(
     plan: null,
     authMode: "unknown",
     billingMode: "unknown",
+    providerError: null,
     quotaStatus: "unavailable",
     state: "unknown",
     isActive: false,
@@ -79,18 +80,16 @@ export async function collectDashboard(
   alertThresholdPercent: AlertThreshold = 85,
 ): Promise<DashboardSnapshot> {
   const platform = process.platform;
+  const profiles = await profileStore.list();
   const [providerAccounts, claudeCli, codexCli] = await Promise.all([
-    mapWithConcurrency(
-      await profileStore.list(),
-      DASHBOARD_COLLECTION_CONCURRENCY,
-      (profile) =>
-        collectProfileSnapshot(
-          profile,
-          platform,
-          commands,
-          codexMonitor,
-          identityKey,
-        ),
+    mapWithConcurrency(profiles, DASHBOARD_COLLECTION_CONCURRENCY, (profile) =>
+      collectProfileSnapshot(
+        profile,
+        platform,
+        commands,
+        codexMonitor,
+        identityKey,
+      ),
     ),
     probeProviderCommand(
       "claude",
@@ -105,7 +104,12 @@ export async function collectDashboard(
   ]);
 
   return {
-    accounts: providerAccounts.map(toPublicAccountSnapshot),
+    // `mapWithConcurrency` preserves input order, so snapshot i belongs to
+    // profile i; the profile carries the verification history the lifecycle
+    // derivation needs.
+    accounts: providerAccounts.map((snapshot, index) =>
+      toPublicAccountSnapshot(snapshot, profiles[index]!),
+    ),
     observedAt: new Date().toISOString(),
     mode: "live",
     platform: describeRuntimePlatform(platform),

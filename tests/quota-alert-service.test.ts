@@ -13,6 +13,8 @@ const freshSubscription: AccountSnapshot = {
   billingMode: "subscription",
   quotaStatus: "fresh",
   state: "limited",
+  lifecycle: "verified",
+  providerError: null,
   isActive: true,
   isManaged: true,
   quotaWindows: [

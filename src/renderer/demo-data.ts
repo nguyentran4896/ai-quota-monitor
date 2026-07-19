@@ -23,6 +23,13 @@ export const demoDashboard: DashboardSnapshot = {
       compatible: true,
       version: "2.1.214",
       message: "Claude Code is available on the application PATH.",
+      installGuidance: {
+        headline: "Install the official Claude Code CLI, then sign in once.",
+        windowsCommand: "irm https://claude.ai/install.ps1 | iex",
+        signIn: "Run claude and follow the browser sign-in.",
+        verify: "claude --version",
+        note: "winget install Anthropic.ClaudeCode also works.",
+      },
     },
     codex: {
       provider: "codex",
@@ -31,6 +38,14 @@ export const demoDashboard: DashboardSnapshot = {
       compatible: true,
       version: "0.139.0",
       message: "Codex is available on the application PATH.",
+      installGuidance: {
+        headline:
+          "Install the standalone Codex CLI, then sign in with ChatGPT.",
+        windowsCommand: "npm install -g @openai/codex",
+        signIn: "Run codex and choose Sign in with ChatGPT.",
+        verify: "codex --version",
+        note: "The ChatGPT desktop app and Microsoft Store listing are not the Codex CLI.",
+      },
     },
   },
   alertThresholdPercent: null,
@@ -46,6 +61,8 @@ export const demoDashboard: DashboardSnapshot = {
       billingMode: "subscription",
       quotaStatus: "needs-first-response",
       state: "ready",
+      lifecycle: "verified",
+      providerError: null,
       isActive: true,
       isManaged: false,
       quotaWindows: [],
@@ -68,6 +85,8 @@ export const demoDashboard: DashboardSnapshot = {
       billingMode: "subscription",
       quotaStatus: "fresh",
       state: "ready",
+      lifecycle: "verified",
+      providerError: null,
       isActive: true,
       isManaged: false,
       quotaWindows: [

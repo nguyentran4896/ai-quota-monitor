@@ -2,11 +2,51 @@ import { createHmac } from "node:crypto";
 import type {
   AuthenticationMode,
   BillingMode,
+  ManagedProfileLifecycle,
+  ProviderErrorReason,
   QuotaStatus,
   QuotaWindow,
 } from "../../shared/contracts";
 
 export const SNAPSHOT_STALE_AFTER_MS = 15 * 60 * 1_000;
+
+/**
+ * Derives the explicit managed-profile lifecycle from the persisted
+ * verification history (`verifiedIdentityVerifier`) and the live snapshot.
+ * A profile that has never been verified is always guided to setup, so a
+ * brand-new managed profile — even one whose CLI probe failed — surfaces
+ * "Set up this account" instead of a launch that will only be blocked.
+ */
+export function deriveLifecycle(input: {
+  isManaged: boolean;
+  authMode: AuthenticationMode;
+  identity: string | null;
+  identityVerifier: string | null;
+  verifiedIdentityVerifier: string | null;
+  providerError: ProviderErrorReason | null;
+}): ManagedProfileLifecycle {
+  const everVerified = Boolean(input.verifiedIdentityVerifier);
+  const setupOrError = (): ManagedProfileLifecycle =>
+    input.isManaged && !everVerified ? "pending-login" : "provider-error";
+
+  // The provider CLI could not be read, or ran but reported an auth mode we do
+  // not understand. Either way we cannot confirm the account.
+  if (input.providerError !== null || input.authMode === "unknown") {
+    return setupOrError();
+  }
+  if (input.authMode === "signed-out") {
+    return input.isManaged && !everVerified ? "pending-login" : "signed-out";
+  }
+  // Signed in with a recognized mode. Current (unmanaged) profiles never need
+  // the managed identity-confirmation gate.
+  if (!input.isManaged) return "verified";
+  if (!input.identity || !input.identityVerifier) {
+    return "authenticated-unverified";
+  }
+  return input.identityVerifier === input.verifiedIdentityVerifier
+    ? "verified"
+    : "authenticated-unverified";
+}
 
 export function maskAccountIdentity(value: unknown): string | null {
   const normalized = normalizeAccountIdentity(value);

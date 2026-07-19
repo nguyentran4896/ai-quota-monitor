@@ -90,6 +90,31 @@ describe("probeProviderCommand", () => {
       compatible: false,
     });
   });
+
+  it("attaches provider-specific install guidance to every probe result", async () => {
+    const claude = await probeProviderCommand(
+      "claude",
+      "quotadeck-command-does-not-exist",
+      "path",
+    );
+    expect(claude.installGuidance.windowsCommand).toContain(
+      "claude.ai/install.ps1",
+    );
+    expect(claude.installGuidance.verify).toBe("claude --version");
+
+    const codex = await probeProviderCommand(
+      "codex",
+      "quotadeck-command-does-not-exist",
+      "path",
+    );
+    expect(codex.installGuidance.windowsCommand).toBe(
+      "npm install -g @openai/codex",
+    );
+    // The most common Codex setup mistake is treating the ChatGPT desktop /
+    // Microsoft Store app as the CLI — the guidance must call this out.
+    expect(codex.installGuidance.note).toMatch(/Microsoft Store/i);
+    expect(codex.installGuidance.note).toMatch(/not the Codex CLI/i);
+  });
 });
 
 describe("resolveCliInvocation", () => {

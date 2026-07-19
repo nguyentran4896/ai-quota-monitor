@@ -52,6 +52,12 @@ export function evaluateProfileLaunchSafety(
   const confirmBilling = snapshot.billingMode !== "subscription";
   if (!verifyIdentity && !confirmBilling) return { kind: "allow" };
 
+  // Name the exact profile so a duplicated label cannot make the confirmation
+  // ambiguous about which account is being launched.
+  const shortId = profile.id.includes("-")
+    ? profile.id.slice(0, 8)
+    : profile.id;
+  const profileDetail = `Profile: ${profile.displayName} (${profile.provider} · ${shortId}). `;
   const identityDetail = snapshot.identity
     ? `Account: ${snapshot.identity}. `
     : "Account identity was not reported. ";
@@ -70,6 +76,6 @@ export function evaluateProfileLaunchSafety(
     message: verifyIdentity
       ? `Verify ${profile.displayName} before launch?`
       : `Launch ${profile.displayName}?`,
-    detail: `${identityDetail}${billingDetail} A new terminal will be opened; running sessions are never moved between accounts.`,
+    detail: `${profileDetail}${identityDetail}${billingDetail} A new terminal will be opened; running sessions are never moved between accounts.`,
   };
 }

@@ -15,8 +15,11 @@ describe("App", () => {
     render(<App />);
     expect(await screen.findByText("Your AI runway,")).toBeInTheDocument();
     expect(screen.getAllByText("Claude — Studio")).toHaveLength(2);
+    // The accessible name carries account, window, usage, and reset context.
     expect(
-      screen.getByRole("progressbar", { name: "97% available" }),
+      screen.getByRole("progressbar", {
+        name: /Codex — Personal — 1-week window: 97% available, 3% used/,
+      }),
     ).toBeInTheDocument();
     expect(screen.getByText("Browser preview")).toBeInTheDocument();
     expect(screen.getByText("Ctrl K")).toBeInTheDocument();
@@ -63,10 +66,13 @@ describe("App", () => {
       refresh: vi.fn().mockResolvedValue(macDashboard),
       addProfile: vi.fn(),
       removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
       beginLogin: vi.fn(),
       launchProfile: vi.fn(),
       chooseCliExecutable: vi.fn(),
       resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
       setAlertThreshold: vi.fn(),
       openProviderUsage: vi.fn(),
       openEvidence: vi.fn(),
@@ -104,10 +110,13 @@ describe("App", () => {
       refresh: vi.fn().mockResolvedValue(linuxDashboard),
       addProfile: vi.fn(),
       removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
       beginLogin: vi.fn(),
       launchProfile: vi.fn(),
       chooseCliExecutable: vi.fn(),
       resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
       setAlertThreshold: vi.fn(),
       openProviderUsage: vi.fn(),
       openEvidence: vi.fn(),
@@ -144,6 +153,75 @@ describe("App", () => {
     ).toHaveValue("off");
   });
 
+  it("shows Windows setup guidance and re-check/install actions when a CLI is missing", async () => {
+    const missingCodex = {
+      ...demoDashboard,
+      mode: "live" as const,
+      cliStatus: {
+        ...demoDashboard.cliStatus,
+        codex: {
+          ...demoDashboard.cliStatus.codex,
+          callable: false,
+          compatible: false,
+          version: null,
+          message:
+            "Codex is not callable. Install its official standalone CLI or choose its executable in Settings.",
+        },
+      },
+    };
+    const recheckCliExecutable = vi.fn().mockResolvedValue({
+      ok: false,
+      message: "Codex is not callable.",
+    });
+    const openCliInstallInstructions = vi.fn().mockResolvedValue({
+      ok: true,
+      message: "Codex install instructions opened in your browser.",
+    });
+    window.quotaMonitor = {
+      getDashboard: vi.fn().mockResolvedValue(missingCodex),
+      refresh: vi.fn().mockResolvedValue(missingCodex),
+      addProfile: vi.fn(),
+      removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
+      beginLogin: vi.fn(),
+      launchProfile: vi.fn(),
+      chooseCliExecutable: vi.fn(),
+      resetCliExecutable: vi.fn(),
+      recheckCliExecutable,
+      openCliInstallInstructions,
+      setAlertThreshold: vi.fn(),
+      openProviderUsage: vi.fn(),
+      openEvidence: vi.fn(),
+    };
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Your AI runway,");
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+
+    const dialog = screen.getByRole("dialog", { name: "CLI settings" });
+    // The install command and the Store-app caveat come from the official docs.
+    expect(
+      within(dialog).getByText("npm install -g @openai/codex"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        /Microsoft Store listing are not the Codex CLI/i,
+      ),
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Re-check Codex" }),
+    );
+    expect(recheckCliExecutable).toHaveBeenCalledWith("codex");
+
+    await user.click(
+      within(dialog).getByRole("button", {
+        name: "Open Codex install instructions",
+      }),
+    );
+    expect(openCliInstallInstructions).toHaveBeenCalledWith("codex");
+  });
+
   it("supports Escape dismissal and returns focus to the dialog trigger", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -159,16 +237,33 @@ describe("App", () => {
     expect(trigger).toHaveFocus();
   });
 
+  it("focuses the account selector when Ctrl+K is pressed", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Your AI runway,");
+    const options = screen.getAllByRole("option");
+    expect(options[0]).not.toHaveFocus();
+
+    await user.keyboard("{Control>}k{/Control}");
+    // Item 2: the shortcut must reach a visible selector at every width.
+    expect(options[0]).toHaveFocus();
+  });
+
   it("moves through account options with standard listbox arrow keys", async () => {
     const user = userEvent.setup();
     render(<App />);
     await screen.findByText("Your AI runway,");
     const options = screen.getAllByRole("option");
+    // Roving tabindex: only the selected option is initially tabbable.
+    expect(options[0]).toHaveAttribute("tabindex", "0");
+    expect(options[1]).toHaveAttribute("tabindex", "-1");
     options[0]?.focus();
 
     await user.keyboard("{ArrowDown}");
     expect(options[1]).toHaveFocus();
     expect(options[1]).toHaveAttribute("aria-selected", "true");
+    expect(options[1]).toHaveAttribute("tabindex", "0");
+    expect(options[0]).toHaveAttribute("tabindex", "-1");
     await user.keyboard("{ArrowUp}");
     expect(options[0]).toHaveFocus();
   });
@@ -184,10 +279,13 @@ describe("App", () => {
       refresh: vi.fn().mockResolvedValue(refreshed),
       addProfile: vi.fn(),
       removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
       beginLogin: vi.fn(),
       launchProfile: vi.fn(),
       chooseCliExecutable: vi.fn(),
       resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
       setAlertThreshold: vi.fn(),
       openProviderUsage: vi.fn(),
       openEvidence: vi.fn(),
@@ -227,10 +325,13 @@ describe("App", () => {
       refresh: vi.fn().mockResolvedValue(dashboard),
       addProfile: vi.fn(),
       removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
       beginLogin,
       launchProfile,
       chooseCliExecutable: vi.fn(),
       resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
       setAlertThreshold: vi.fn(),
       openProviderUsage: vi.fn(),
       openEvidence: vi.fn(),
@@ -242,5 +343,410 @@ describe("App", () => {
 
     expect(launchProfile).toHaveBeenCalledWith("codex-api");
     expect(beginLogin).not.toHaveBeenCalled();
+  });
+
+  it("offers setup (not launch) for a newly created managed profile and calls beginLogin", async () => {
+    const user = userEvent.setup();
+    // A freshly created managed profile: signed out, never verified. Even if the
+    // CLI probe had failed it lands in pending-login, so it must offer setup.
+    const newProfile = {
+      ...demoDashboard.accounts[0]!,
+      id: "claude-new",
+      displayName: "Claude New",
+      identity: null,
+      identityVerified: false,
+      isManaged: true,
+      isActive: false,
+      authMode: "signed-out" as const,
+      billingMode: "unknown" as const,
+      quotaStatus: "signed-out" as const,
+      state: "signed-out" as const,
+      lifecycle: "pending-login" as const,
+      providerError: null,
+    };
+    const dashboard = { ...demoDashboard, accounts: [newProfile] };
+    const beginLogin = vi
+      .fn()
+      .mockResolvedValue({ ok: true, message: "Opening sign-in…" });
+    const launchProfile = vi.fn();
+    window.quotaMonitor = {
+      getDashboard: vi.fn().mockResolvedValue(dashboard),
+      refresh: vi.fn().mockResolvedValue(dashboard),
+      addProfile: vi.fn(),
+      removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
+      beginLogin,
+      launchProfile,
+      chooseCliExecutable: vi.fn(),
+      resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
+      setAlertThreshold: vi.fn(),
+      openProviderUsage: vi.fn(),
+      openEvidence: vi.fn(),
+    };
+    render(<App />);
+    await screen.findByText("Your AI runway,");
+
+    const setupButton = await screen.findByRole("button", {
+      name: /Set up this account/i,
+    });
+    expect(
+      screen.queryByRole("button", { name: /^Launch/i }),
+    ).not.toBeInTheDocument();
+
+    await user.click(setupButton);
+
+    expect(beginLogin).toHaveBeenCalledWith("claude-new");
+    expect(launchProfile).not.toHaveBeenCalled();
+  });
+
+  it("uses specific quota-unavailable states, a distinct status dot, and key shortcuts", async () => {
+    const errored = {
+      ...demoDashboard.accounts[0]!,
+      id: "claude-error",
+      displayName: "Claude Broken",
+      identity: null,
+      identityVerified: false,
+      isManaged: true,
+      isActive: false,
+      authMode: "unknown" as const,
+      billingMode: "unknown" as const,
+      quotaStatus: "unavailable" as const,
+      state: "unknown" as const,
+      lifecycle: "provider-error" as const,
+      providerError: "cli-missing" as const,
+      quotaWindows: [],
+    };
+    const dashboard = { ...demoDashboard, accounts: [errored] };
+    window.quotaMonitor = {
+      getDashboard: vi.fn().mockResolvedValue(dashboard),
+      refresh: vi.fn().mockResolvedValue(dashboard),
+      addProfile: vi.fn(),
+      removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
+      beginLogin: vi.fn(),
+      launchProfile: vi.fn(),
+      chooseCliExecutable: vi.fn(),
+      resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
+      setAlertThreshold: vi.fn(),
+      openProviderUsage: vi.fn(),
+      openEvidence: vi.fn(),
+    };
+    render(<App />);
+    await screen.findByText("Your AI runway,");
+
+    // Not a generic "Quota hidden".
+    expect(screen.getByText(/CLI unavailable/)).toBeInTheDocument();
+    expect(screen.queryByText("Quota hidden")).not.toBeInTheDocument();
+
+    // The status dot is distinct and carries meaningful accessible text that
+    // names the account, so it stays unambiguous across many cards.
+    const card = screen.getByRole("article", { name: "Claude Broken account" });
+    const dot = within(card).getByRole("img", {
+      name: "Claude Broken status: Provider CLI unavailable",
+    });
+    expect(dot).toHaveClass("tone-error");
+
+    // Ctrl/⌘+K is exposed as a keyboard shortcut on the selector.
+    expect(
+      screen.getByRole("listbox", { name: "AI accounts" }),
+    ).toHaveAttribute("aria-keyshortcuts", "Control+K");
+  });
+
+  it("renders a full 48-character Unicode/emoji label with intact card actions", async () => {
+    const label = "🚀 Клиент café — Very Long Account Label 12345 ✅"; // 48 code points
+    const managed = {
+      ...demoDashboard.accounts[0]!,
+      id: "claude-long",
+      displayName: label,
+      isManaged: true,
+      isActive: false,
+      lifecycle: "verified" as const,
+    };
+    const dashboard = { ...demoDashboard, accounts: [managed] };
+    window.quotaMonitor = {
+      getDashboard: vi.fn().mockResolvedValue(dashboard),
+      refresh: vi.fn().mockResolvedValue(dashboard),
+      addProfile: vi.fn(),
+      removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
+      beginLogin: vi.fn(),
+      launchProfile: vi.fn(),
+      chooseCliExecutable: vi.fn(),
+      resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
+      setAlertThreshold: vi.fn(),
+      openProviderUsage: vi.fn(),
+      openEvidence: vi.fn(),
+    };
+    render(<App />);
+    await screen.findByText("Your AI runway,");
+
+    const card = screen.getByRole("article", { name: `${label} account` });
+    expect(within(card).getByRole("heading", { level: 3 })).toHaveTextContent(
+      label,
+    );
+    // The rename and remove controls remain reachable next to the long label.
+    expect(
+      within(card).getByRole("button", { name: `Rename ${label}` }),
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByRole("button", { name: `Remove ${label}` }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a dismissible, account-identifying toast outside the switcher", async () => {
+    const user = userEvent.setup();
+    const managed = {
+      ...demoDashboard.accounts[1]!,
+      id: "codex-managed",
+      displayName: "Codex Work",
+      isManaged: true,
+      isActive: false,
+      lifecycle: "verified" as const,
+    };
+    const dashboard = { ...demoDashboard, accounts: [managed] };
+    window.quotaMonitor = {
+      getDashboard: vi.fn().mockResolvedValue(dashboard),
+      refresh: vi.fn().mockResolvedValue(dashboard),
+      addProfile: vi.fn(),
+      removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
+      beginLogin: vi.fn(),
+      launchProfile: vi
+        .fn()
+        .mockResolvedValue({ ok: true, message: "Launched Codex Work." }),
+      chooseCliExecutable: vi.fn(),
+      resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
+      setAlertThreshold: vi.fn(),
+      openProviderUsage: vi.fn(),
+      openEvidence: vi.fn(),
+    };
+    render(<App />);
+    await screen.findByText("Your AI runway,");
+
+    await user.click(screen.getByRole("button", { name: /Launch Codex/i }));
+
+    const toast = await screen.findByRole("status");
+    expect(toast).toHaveTextContent("Codex Work: Launched Codex Work.");
+    // The toast lives outside the switcher aside, so it does not follow the
+    // selected account.
+    expect(toast.closest(".switcher-panel")).toBeNull();
+
+    await user.click(
+      screen.getByRole("button", { name: "Dismiss notification" }),
+    );
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("saves the alert threshold optimistically without a provider refresh", async () => {
+    const user = userEvent.setup();
+    const refresh = vi.fn().mockResolvedValue(demoDashboard);
+    const setAlertThreshold = vi
+      .fn()
+      .mockResolvedValue({ ok: true, message: "Alerts at 85% used." });
+    window.quotaMonitor = {
+      getDashboard: vi.fn().mockResolvedValue(demoDashboard),
+      refresh,
+      addProfile: vi.fn(),
+      removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
+      beginLogin: vi.fn(),
+      launchProfile: vi.fn(),
+      chooseCliExecutable: vi.fn(),
+      resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
+      setAlertThreshold,
+      openProviderUsage: vi.fn(),
+      openEvidence: vi.fn(),
+    };
+    render(<App />);
+    await screen.findByText("Your AI runway,");
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+
+    const dialog = screen.getByRole("dialog", { name: "CLI settings" });
+    const select = within(dialog).getByRole("combobox", {
+      name: "Local quota alert threshold",
+    });
+    await user.selectOptions(select, "85");
+
+    // Control updates immediately and persistence is not a full collection.
+    expect(select).toHaveValue("85");
+    expect(setAlertThreshold).toHaveBeenCalledWith(85);
+    expect(await within(dialog).findByText("Saved")).toBeInTheDocument();
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("renames a managed profile through the rename dialog", async () => {
+    const user = userEvent.setup();
+    const managed = {
+      ...demoDashboard.accounts[1]!,
+      id: "codex-managed",
+      displayName: "Codex Work",
+      isManaged: true,
+      isActive: false,
+      lifecycle: "verified" as const,
+    };
+    const dashboard = { ...demoDashboard, accounts: [managed] };
+    const renameProfile = vi
+      .fn()
+      .mockResolvedValue({ ok: true, message: "Renamed to Codex Client." });
+    window.quotaMonitor = {
+      getDashboard: vi.fn().mockResolvedValue(dashboard),
+      refresh: vi.fn().mockResolvedValue(dashboard),
+      addProfile: vi.fn(),
+      removeProfile: vi.fn(),
+      renameProfile,
+      beginLogin: vi.fn(),
+      launchProfile: vi.fn(),
+      chooseCliExecutable: vi.fn(),
+      resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
+      setAlertThreshold: vi.fn(),
+      openProviderUsage: vi.fn(),
+      openEvidence: vi.fn(),
+    };
+    render(<App />);
+    await screen.findByText("Your AI runway,");
+
+    await user.click(
+      screen.getByRole("button", { name: /Rename Codex Work/i }),
+    );
+    const dialog = screen.getByRole("dialog", { name: /Rename account/i });
+    const input = within(dialog).getByLabelText("Account label");
+    await user.clear(input);
+    await user.type(input, "Codex Client");
+    await user.click(
+      within(dialog).getByRole("button", { name: /Save label/i }),
+    );
+
+    expect(renameProfile).toHaveBeenCalledWith("codex-managed", "Codex Client");
+  });
+
+  it("offers an Open CLI settings escape hatch when setup fails on a missing CLI", async () => {
+    const user = userEvent.setup();
+    // A pending-login managed account (NOT provider-error) whose provider CLI is
+    // missing. Keying the escape hatch only off the lifecycle previously left
+    // "Set up this account" failing in a loop with no way to reach CLI settings.
+    const pending = {
+      ...demoDashboard.accounts[1]!,
+      id: "codex-pending",
+      displayName: "Codex Pending",
+      identity: null,
+      identityVerified: false,
+      isManaged: true,
+      isActive: false,
+      authMode: "signed-out" as const,
+      billingMode: "unknown" as const,
+      quotaStatus: "signed-out" as const,
+      state: "signed-out" as const,
+      lifecycle: "pending-login" as const,
+      providerError: null,
+    };
+    const dashboard = {
+      ...demoDashboard,
+      mode: "live" as const,
+      accounts: [pending],
+      cliStatus: {
+        ...demoDashboard.cliStatus,
+        codex: {
+          ...demoDashboard.cliStatus.codex,
+          callable: false,
+          compatible: false,
+          version: null,
+        },
+      },
+    };
+    const beginLogin = vi.fn().mockResolvedValue({
+      ok: false,
+      message: "Codex is not callable on this device.",
+    });
+    window.quotaMonitor = {
+      getDashboard: vi.fn().mockResolvedValue(dashboard),
+      refresh: vi.fn().mockResolvedValue(dashboard),
+      addProfile: vi.fn(),
+      removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
+      beginLogin,
+      launchProfile: vi.fn(),
+      chooseCliExecutable: vi.fn(),
+      resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
+      setAlertThreshold: vi.fn(),
+      openProviderUsage: vi.fn(),
+      openEvidence: vi.fn(),
+    };
+    render(<App />);
+    await screen.findByText("Your AI runway,");
+
+    await user.click(
+      screen.getByRole("button", { name: /Set up this account/i }),
+    );
+    expect(beginLogin).toHaveBeenCalledWith("codex-pending");
+
+    const toast = await screen.findByRole("alert");
+    expect(toast).toHaveTextContent("Codex is not callable");
+    // The recovery action opens CLI settings instead of failing in a loop.
+    await user.click(
+      within(toast).getByRole("button", { name: "Open CLI settings" }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "CLI settings" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows only the curated validation sentence when adding a duplicate name fails", async () => {
+    const user = userEvent.setup();
+    // Electron frames a rejected invoke as
+    // "Error invoking remote method 'profiles:add': Error: <message>". The
+    // dialog must strip that wrapper and never surface the channel/internals.
+    const addProfile = vi
+      .fn()
+      .mockRejectedValue(
+        new Error(
+          `Error invoking remote method 'profiles:add': Error: An account named "Studio" already exists for Codex.`,
+        ),
+      );
+    window.quotaMonitor = {
+      getDashboard: vi.fn().mockResolvedValue(demoDashboard),
+      refresh: vi.fn().mockResolvedValue(demoDashboard),
+      addProfile,
+      removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
+      beginLogin: vi.fn(),
+      launchProfile: vi.fn(),
+      chooseCliExecutable: vi.fn(),
+      resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
+      setAlertThreshold: vi.fn(),
+      openProviderUsage: vi.fn(),
+      openEvidence: vi.fn(),
+    };
+    render(<App />);
+    await screen.findByText("Your AI runway,");
+    await user.click(screen.getByRole("button", { name: /Add account/i }));
+
+    const dialog = screen.getByRole("dialog", { name: "Add an AI account" });
+    await user.type(within(dialog).getByLabelText("Account label"), "Studio");
+    await user.click(
+      within(dialog).getByRole("button", { name: /Create login workspace/i }),
+    );
+
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert).toHaveTextContent(
+      'An account named "Studio" already exists for Codex.',
+    );
+    expect(alert).not.toHaveTextContent(/invoking remote method/i);
+    expect(alert).not.toHaveTextContent(/profiles:add/i);
   });
 });

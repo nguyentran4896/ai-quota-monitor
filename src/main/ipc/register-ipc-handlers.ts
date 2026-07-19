@@ -1,4 +1,5 @@
 import { lstat } from "node:fs/promises";
+import path from "node:path";
 import {
   dialog,
   ipcMain,
@@ -21,6 +22,7 @@ import {
 import type { ProfileStore } from "../profiles/profile-store";
 import type { CodexMonitorManager } from "../providers/codex-app-server";
 import { stopProviderSnapshotMonitoring } from "../providers/provider-adapters";
+import { providerInstallUrl } from "../providers/provider-install";
 import { providerUsageUrl } from "../providers/provider-usage";
 import { createAsyncRequestCoalescer } from "../services/concurrency";
 import {
@@ -56,6 +58,13 @@ function isProvider(value: unknown): value is ProviderId {
 
 function providerName(provider: ProviderId): string {
   return provider === "claude" ? "Claude Code" : "Codex";
+}
+
+// A short, non-secret handle so confirmations name the exact profile even when
+// legacy duplicate labels exist.
+function profileHandle(provider: ProviderId, id: string): string {
+  const shortId = id.includes("-") ? id.slice(0, 8) : id;
+  return `${providerName(provider)} · ${shortId}`;
 }
 
 async function pathExists(candidate: string): Promise<boolean> {
@@ -126,7 +135,10 @@ export function registerIpcHandlers({
     const confirmation = await dialog.showMessageBox(getMainWindow(), {
       type: "warning",
       title: "Remove account profile?",
-      message: `Remove ${profile.displayName} from QuotaDeck?`,
+      message: `Remove ${profile.displayName} (${profileHandle(
+        profile.provider,
+        profile.id,
+      )}) from QuotaDeck?`,
       detail:
         "Signing out asks the official provider client to revoke or remove its login first. The isolated provider home and local sessions are then moved to the system Trash or Recycle Bin.",
       buttons: [
@@ -185,6 +197,35 @@ export function registerIpcHandlers({
       };
     }
   });
+  ipcMain.handle(
+    "profiles:rename",
+    async (event, profileId: string, displayName: string) => {
+      assertTrustedSender(event);
+      const profile = await profileStore.get(profileId);
+      if (!profile) {
+        return { ok: false, message: "Account profile was not found." };
+      }
+      if (!profile.isManaged) {
+        return {
+          ok: false,
+          message: "Current provider profiles cannot be renamed.",
+        };
+      }
+      try {
+        const updated = await profileStore.rename(profileId, displayName);
+        dashboardRequests.invalidate();
+        return { ok: true, message: `Renamed to ${updated.displayName}.` };
+      } catch (error) {
+        return {
+          ok: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : "The account could not be renamed.",
+        };
+      }
+    },
+  );
   ipcMain.handle("profiles:login", async (event, profileId: string) => {
     assertTrustedSender(event);
     const profile = await profileStore.get(profileId);
@@ -256,6 +297,19 @@ export function registerIpcHandlers({
     const selection = await dialog.showOpenDialog(getMainWindow(), {
       title: `Choose the ${providerName(provider)} executable`,
       properties: ["openFile"],
+      // On Windows the CLI ships as an .exe or an npm/pnpm .cmd/.bat/.ps1 shim.
+      // Offer those first, but keep "All files" so a shim without an extension
+      // (or a non-Windows host) is still selectable.
+      filters:
+        process.platform === "win32"
+          ? [
+              {
+                name: "Executables and shims",
+                extensions: ["exe", "cmd", "bat", "ps1"],
+              },
+              { name: "All files", extensions: ["*"] },
+            ]
+          : undefined,
     });
     const executable = selection.filePaths[0];
     if (selection.canceled || !executable) {
@@ -286,6 +340,51 @@ export function registerIpcHandlers({
       message: `${providerName(provider)} will be discovered from the application PATH.`,
     };
   });
+  ipcMain.handle(
+    "settings:recheck-cli",
+    async (event, provider: ProviderId) => {
+      assertTrustedSender(event);
+      if (!isProvider(provider)) {
+        return { ok: false, message: "Unsupported provider." };
+      }
+      const commands = await cliSettingsStore.getCommands();
+      const command = commands[provider];
+      const status = await probeProviderCommand(
+        provider,
+        command,
+        path.isAbsolute(command) ? "custom" : "path",
+      );
+      // Force the next dashboard read to re-probe rather than reuse a cached
+      // result, so the card the user is looking at reflects this re-check.
+      dashboardRequests.invalidate();
+      // status.message is already a curated sentence — never raw command output.
+      return {
+        ok: status.callable && status.compatible,
+        message: status.message,
+      };
+    },
+  );
+  ipcMain.handle(
+    "settings:open-install",
+    async (event, provider: ProviderId) => {
+      assertTrustedSender(event);
+      if (!isProvider(provider)) {
+        return { ok: false, message: "Unsupported provider." };
+      }
+      try {
+        await shell.openExternal(providerInstallUrl(provider));
+        return {
+          ok: true,
+          message: `${providerName(provider)} install instructions opened in your browser.`,
+        };
+      } catch {
+        return {
+          ok: false,
+          message: `${providerName(provider)} install instructions could not be opened.`,
+        };
+      }
+    },
+  );
   ipcMain.handle(
     "settings:set-alert-threshold",
     async (event, threshold: AlertThreshold) => {

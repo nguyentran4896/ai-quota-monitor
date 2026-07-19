@@ -6,6 +6,7 @@ import type {
   ProviderId,
 } from "../../shared/contracts";
 import { createProfileEnvironment } from "../profiles/profile-environment";
+import { providerInstallGuidanceFor } from "../providers/provider-install";
 import { resolveCliInvocation } from "./resolve-cli-command";
 
 const execFileAsync = promisify(execFile);
@@ -61,6 +62,7 @@ export async function probeProviderCommand(
   source: ProviderCommandSource,
 ): Promise<ProviderCliStatus> {
   const providerName = provider === "claude" ? "Claude Code" : "Codex";
+  const installGuidance = providerInstallGuidanceFor(provider);
   try {
     // Resolve against the same augmented PATH the launcher uses so npm/pnpm
     // .cmd shims (and explicitly selected shims) are reachable on Windows.
@@ -86,6 +88,7 @@ export async function probeProviderCommand(
     return {
       provider,
       source,
+      installGuidance,
       callable: true,
       compatible: parsed?.compatible ?? false,
       version: parsed?.version ?? null,
@@ -101,6 +104,7 @@ export async function probeProviderCommand(
     return {
       provider,
       source,
+      installGuidance,
       callable: false,
       compatible: false,
       version: null,
