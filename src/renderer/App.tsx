@@ -48,6 +48,19 @@ function titleCase(value: string | null): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+// Electron rejects a failed invoke with a message framed as
+// "Error invoking remote method 'channel': Error: <message>". Strip that
+// transport wrapper so the user sees only the curated validation sentence the
+// main process threw — never Electron internals or a channel name.
+function friendlyBridgeError(caught: unknown, fallback: string): string {
+  if (!(caught instanceof Error) || !caught.message) return fallback;
+  const stripped = caught.message
+    .replace(/^Error invoking remote method '[^']*':\s*/, "")
+    .replace(/^(?:[A-Za-z]+Error):\s*/, "")
+    .trim();
+  return stripped.length > 0 ? stripped : fallback;
+}
+
 function relativeTime(value: string): string {
   const seconds = Math.max(
     0,
@@ -340,7 +353,7 @@ function AccountCard({
             className={`provider-live-dot tone-${status.tone}`}
             title={status.text}
             role="img"
-            aria-label={`Status: ${status.text}`}
+            aria-label={`${account.displayName} status: ${status.text}`}
           />
           {onTogglePin && (
             <button
@@ -474,15 +487,27 @@ function SmartSwitcher({
   accounts,
   onAction,
   shortcutModifier,
+  pinnedIds,
 }: {
   accounts: AccountSnapshot[];
   onAction: (account: AccountSnapshot) => Promise<void>;
   shortcutModifier: "Ctrl" | "⌘";
+  pinnedIds: Set<string>;
 }) {
+  // Pins float to the top here too, matching the Accounts view — a stable sort
+  // keeps the provider's original order among equally-pinned accounts.
+  const ordered = useMemo(
+    () =>
+      [...accounts].sort(
+        (left, right) =>
+          (pinnedIds.has(right.id) ? 1 : 0) - (pinnedIds.has(left.id) ? 1 : 0),
+      ),
+    [accounts, pinnedIds],
+  );
   const [selected, setSelected] = useState(accounts[0]?.id ?? "");
   const [isLaunching, setIsLaunching] = useState(false);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const selectedAccount = accounts.find((account) => account.id === selected);
+  const selectedAccount = ordered.find((account) => account.id === selected);
   const needsSetup = selectedAccount
     ? accountNeedsSetup(selectedAccount)
     : false;
@@ -532,7 +557,7 @@ function SmartSwitcher({
         aria-label="AI accounts"
         aria-keyshortcuts={shortcutModifier === "⌘" ? "Meta+K" : "Control+K"}
       >
-        {accounts.map((account, index) => {
+        {ordered.map((account, index) => {
           const meta = providerMeta[account.provider];
           const available = quotaAvailabilityLabel(account);
           const isSelected = account.id === selectedAccount?.id;
@@ -547,14 +572,14 @@ function SmartSwitcher({
               onKeyDown={(event) => {
                 let nextIndex: number | null = null;
                 if (event.key === "ArrowDown")
-                  nextIndex = (index + 1) % accounts.length;
+                  nextIndex = (index + 1) % ordered.length;
                 if (event.key === "ArrowUp")
-                  nextIndex = (index - 1 + accounts.length) % accounts.length;
+                  nextIndex = (index - 1 + ordered.length) % ordered.length;
                 if (event.key === "Home") nextIndex = 0;
-                if (event.key === "End") nextIndex = accounts.length - 1;
+                if (event.key === "End") nextIndex = ordered.length - 1;
                 if (nextIndex === null) return;
                 event.preventDefault();
-                const nextAccount = accounts[nextIndex];
+                const nextAccount = ordered[nextIndex];
                 if (nextAccount) setSelected(nextAccount.id);
                 optionRefs.current[nextIndex]?.focus();
               }}
@@ -643,9 +668,7 @@ function AddProfileDialog({
       onClose();
     } catch (caught) {
       setError(
-        caught instanceof Error
-          ? caught.message
-          : "Account profile could not be created.",
+        friendlyBridgeError(caught, "Account profile could not be created."),
       );
     } finally {
       setIsSaving(false);
@@ -1179,6 +1202,7 @@ function AccountsView({
   pinnedIds,
   recentIds,
   ambiguousLabelKeys,
+  shortcutModifier,
   onAction,
   onRemove,
   onRename,
@@ -1189,6 +1213,7 @@ function AccountsView({
   pinnedIds: Set<string>;
   recentIds: string[];
   ambiguousLabelKeys: Set<string>;
+  shortcutModifier: "Ctrl" | "⌘";
   onAction: (account: AccountSnapshot) => Promise<void>;
   onRemove: (account: AccountSnapshot) => Promise<void>;
   onRename: (account: AccountSnapshot) => void;
@@ -1199,6 +1224,23 @@ function AccountsView({
   const [providerFilter, setProviderFilter] = useState<ProviderFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [sort, setSort] = useState<AccountSort>("recommended");
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // The switcher's Ctrl/⌘+K only exists on the Overview; mirror it here so the
+  // same shortcut jumps to the search box while the Accounts view is open.
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      const modifierPressed =
+        shortcutModifier === "⌘" ? event.metaKey : event.ctrlKey;
+      if (modifierPressed && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      }
+    };
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [shortcutModifier]);
 
   const recentRank = useMemo(() => {
     const rank = new Map<string, number>();
@@ -1280,11 +1322,15 @@ function AccountsView({
         <div className="accounts-search">
           <Search size={15} aria-hidden="true" />
           <input
+            ref={searchRef}
             type="search"
             value={query}
             onChange={(event) => setQuery(event.currentTarget.value)}
             placeholder="Search by name, identity, or provider"
             aria-label="Search accounts"
+            aria-keyshortcuts={
+              shortcutModifier === "⌘" ? "Meta+K" : "Control+K"
+            }
           />
         </div>
         <label className="accounts-filter">
@@ -1449,11 +1495,17 @@ export default function App() {
         if (!isSetup && result.ok) {
           setRecentIds(recordRecent(account.id));
         }
+        // Offer a direct fix whenever the provider CLI is the likely blocker —
+        // an explicit provider-error, or a probe that reports the CLI as not
+        // callable/compatible. A missing CLI can leave a profile in
+        // pending-login (not provider-error), so keying only off the lifecycle
+        // left "Set up this account" failing in a loop with no escape hatch.
+        const cli = dashboard?.cliStatus[account.provider];
+        const cliUnready = cli ? !cli.callable || !cli.compatible : false;
         showToast(`${account.displayName}: ${result.message}`, {
           tone: result.ok ? "info" : "error",
-          // Offer a direct fix when the provider CLI is the blocker.
           action:
-            !result.ok && account.lifecycle === "provider-error"
+            !result.ok && (account.lifecycle === "provider-error" || cliUnready)
               ? {
                   label: "Open CLI settings",
                   run: () => setShowCliSettings(true),
@@ -1467,7 +1519,7 @@ export default function App() {
         );
       }
     },
-    [showToast],
+    [dashboard, showToast],
   );
 
   const handleRemoveProfile = useCallback(
@@ -1799,6 +1851,7 @@ export default function App() {
                   accounts={dashboard.accounts}
                   onAction={handleProfileAction}
                   shortcutModifier={dashboard.platform.shortcutModifier}
+                  pinnedIds={pinnedIds}
                 />
               </section>
             </>
@@ -1829,6 +1882,7 @@ export default function App() {
                 pinnedIds={pinnedIds}
                 recentIds={recentIds}
                 ambiguousLabelKeys={ambiguousLabelKeys}
+                shortcutModifier={dashboard.platform.shortcutModifier}
                 onAction={handleProfileAction}
                 onRemove={handleRemoveProfile}
                 onRename={handleRenameProfile}

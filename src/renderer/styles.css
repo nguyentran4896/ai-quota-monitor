@@ -487,6 +487,13 @@ button:focus-visible {
 .accounts-search input:focus {
   outline: none;
 }
+/* The input drops its own outline, so surface keyboard focus on the wrapper
+   with a visible ring — never remove the indicator without a replacement. */
+.accounts-search:focus-within {
+  border-color: #2c6e5b;
+  box-shadow: 0 0 0 3px rgba(44, 110, 91, 0.2);
+  color: #263732;
+}
 .accounts-filter {
   display: flex;
   flex-direction: column;
@@ -1039,6 +1046,11 @@ button:focus-visible {
 .switcher-list {
   display: grid;
   gap: 7px;
+  /* Bound the list so a large collection scrolls inside the panel instead of
+     pushing the launch/setup action below the viewport at normal desktop
+     width. The narrow breakpoint tightens this further. */
+  max-height: min(360px, calc(100vh - 420px));
+  overflow-y: auto;
 }
 .switcher-item {
   border: 1px solid transparent;

@@ -203,6 +203,19 @@ describe("Accounts management destination", () => {
     expect(within(firstCard!).getByText("Codex Team 9")).toBeInTheDocument();
   });
 
+  it("focuses the search box when Ctrl+K is pressed on the Accounts view", async () => {
+    window.quotaMonitor = bridgeFor(manyAccountsDashboard());
+    const user = userEvent.setup();
+    render(<App />);
+    await openAccounts(user);
+
+    const search = screen.getByRole("searchbox");
+    expect(search).not.toHaveFocus();
+    // The shortcut must work here too, not only on the Overview switcher.
+    await user.keyboard("{Control>}k{/Control}");
+    expect(search).toHaveFocus();
+  });
+
   it("launches a verified account and records it as recently used", async () => {
     const bridge = bridgeFor(manyAccountsDashboard());
     window.quotaMonitor = bridge;

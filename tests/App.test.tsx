@@ -442,10 +442,11 @@ describe("App", () => {
     expect(screen.getByText(/CLI unavailable/)).toBeInTheDocument();
     expect(screen.queryByText("Quota hidden")).not.toBeInTheDocument();
 
-    // The status dot is distinct and carries meaningful accessible text.
+    // The status dot is distinct and carries meaningful accessible text that
+    // names the account, so it stays unambiguous across many cards.
     const card = screen.getByRole("article", { name: "Claude Broken account" });
     const dot = within(card).getByRole("img", {
-      name: "Status: Provider CLI unavailable",
+      name: "Claude Broken status: Provider CLI unavailable",
     });
     expect(dot).toHaveClass("tone-error");
 
@@ -628,5 +629,124 @@ describe("App", () => {
     );
 
     expect(renameProfile).toHaveBeenCalledWith("codex-managed", "Codex Client");
+  });
+
+  it("offers an Open CLI settings escape hatch when setup fails on a missing CLI", async () => {
+    const user = userEvent.setup();
+    // A pending-login managed account (NOT provider-error) whose provider CLI is
+    // missing. Keying the escape hatch only off the lifecycle previously left
+    // "Set up this account" failing in a loop with no way to reach CLI settings.
+    const pending = {
+      ...demoDashboard.accounts[1]!,
+      id: "codex-pending",
+      displayName: "Codex Pending",
+      identity: null,
+      identityVerified: false,
+      isManaged: true,
+      isActive: false,
+      authMode: "signed-out" as const,
+      billingMode: "unknown" as const,
+      quotaStatus: "signed-out" as const,
+      state: "signed-out" as const,
+      lifecycle: "pending-login" as const,
+      providerError: null,
+    };
+    const dashboard = {
+      ...demoDashboard,
+      mode: "live" as const,
+      accounts: [pending],
+      cliStatus: {
+        ...demoDashboard.cliStatus,
+        codex: {
+          ...demoDashboard.cliStatus.codex,
+          callable: false,
+          compatible: false,
+          version: null,
+        },
+      },
+    };
+    const beginLogin = vi.fn().mockResolvedValue({
+      ok: false,
+      message: "Codex is not callable on this device.",
+    });
+    window.quotaMonitor = {
+      getDashboard: vi.fn().mockResolvedValue(dashboard),
+      refresh: vi.fn().mockResolvedValue(dashboard),
+      addProfile: vi.fn(),
+      removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
+      beginLogin,
+      launchProfile: vi.fn(),
+      chooseCliExecutable: vi.fn(),
+      resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
+      setAlertThreshold: vi.fn(),
+      openProviderUsage: vi.fn(),
+      openEvidence: vi.fn(),
+    };
+    render(<App />);
+    await screen.findByText("Your AI runway,");
+
+    await user.click(
+      screen.getByRole("button", { name: /Set up this account/i }),
+    );
+    expect(beginLogin).toHaveBeenCalledWith("codex-pending");
+
+    const toast = await screen.findByRole("alert");
+    expect(toast).toHaveTextContent("Codex is not callable");
+    // The recovery action opens CLI settings instead of failing in a loop.
+    await user.click(
+      within(toast).getByRole("button", { name: "Open CLI settings" }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "CLI settings" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows only the curated validation sentence when adding a duplicate name fails", async () => {
+    const user = userEvent.setup();
+    // Electron frames a rejected invoke as
+    // "Error invoking remote method 'profiles:add': Error: <message>". The
+    // dialog must strip that wrapper and never surface the channel/internals.
+    const addProfile = vi
+      .fn()
+      .mockRejectedValue(
+        new Error(
+          `Error invoking remote method 'profiles:add': Error: An account named "Studio" already exists for Codex.`,
+        ),
+      );
+    window.quotaMonitor = {
+      getDashboard: vi.fn().mockResolvedValue(demoDashboard),
+      refresh: vi.fn().mockResolvedValue(demoDashboard),
+      addProfile,
+      removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
+      beginLogin: vi.fn(),
+      launchProfile: vi.fn(),
+      chooseCliExecutable: vi.fn(),
+      resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
+      setAlertThreshold: vi.fn(),
+      openProviderUsage: vi.fn(),
+      openEvidence: vi.fn(),
+    };
+    render(<App />);
+    await screen.findByText("Your AI runway,");
+    await user.click(screen.getByRole("button", { name: /Add account/i }));
+
+    const dialog = screen.getByRole("dialog", { name: "Add an AI account" });
+    await user.type(within(dialog).getByLabelText("Account label"), "Studio");
+    await user.click(
+      within(dialog).getByRole("button", { name: /Create login workspace/i }),
+    );
+
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert).toHaveTextContent(
+      'An account named "Studio" already exists for Codex.',
+    );
+    expect(alert).not.toHaveTextContent(/invoking remote method/i);
+    expect(alert).not.toHaveTextContent(/profiles:add/i);
   });
 });

@@ -36,6 +36,15 @@ describe("responsive layout contract", () => {
     );
   });
 
+  it("bounds the Smart Switcher list so it never buries the launch action", () => {
+    // Regression: a 14-account switcher at normal desktop width must scroll
+    // inside the panel, not push the launch/setup button below the viewport.
+    // The base rule (not only the narrow breakpoint) has to cap the height.
+    expect(css).toMatch(
+      /\.switcher-list\s*\{[^}]*max-height:[^}]*overflow-y:\s*auto/s,
+    );
+  });
+
   it("drops the unreachable breakpoint below the 1040px window minimum", () => {
     // Electron's BrowserWindow minWidth is 1040px, so any max-width breakpoint
     // under it is dead code that must be reconciled away.

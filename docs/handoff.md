@@ -51,10 +51,17 @@ auth files, transcripts, or real identities in the repo.
 
 ## Installer
 
-- `pnpm windows:package` → signed NSIS installer built.
-- Artifact: `release/QuotaDeck-0.1.0-win-x64.exe` (101,669,387 bytes).
-- SHA-256: `be8aaaae7de147f73256f46a9fcf5641434e342956faaee29df52b614bf78c0b`
-- (Checksum is specific to this local build; regenerate on the release runner.)
+- `pnpm windows:package` → NSIS installer built.
+- **Unsigned.** No Windows code-signing certificate is configured in
+  `package.json` (`build.win` has no `certificateFile`/`sign`), so the artifact
+  is Authenticode `NotSigned`. Signing must be added on the release runner
+  (certificate + `CSC_LINK`/`CSC_KEY_PASSWORD`) before public distribution;
+  until then Windows SmartScreen will warn on launch.
+- Artifact: `release/QuotaDeck-0.1.0-win-x64.exe` (~102 MB).
+- The NSIS output is **not reproducible** — each `electron-builder` run embeds
+  build-time metadata, so the SHA-256 differs per build. Do not pin a checksum
+  here; generate `Get-FileHash <artifact> -Algorithm SHA256` on the
+  release-runner build and publish that alongside the signed artifact.
 
 ## Dependency audit
 
