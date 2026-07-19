@@ -237,6 +237,18 @@ describe("App", () => {
     expect(trigger).toHaveFocus();
   });
 
+  it("focuses the account selector when Ctrl+K is pressed", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Your AI runway,");
+    const options = screen.getAllByRole("option");
+    expect(options[0]).not.toHaveFocus();
+
+    await user.keyboard("{Control>}k{/Control}");
+    // Item 2: the shortcut must reach a visible selector at every width.
+    expect(options[0]).toHaveFocus();
+  });
+
   it("moves through account options with standard listbox arrow keys", async () => {
     const user = userEvent.setup();
     render(<App />);

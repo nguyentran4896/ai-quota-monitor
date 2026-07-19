@@ -41,4 +41,11 @@ describe("responsive layout contract", () => {
     // under it is dead code that must be reconciled away.
     expect(css).not.toMatch(/max-width:\s*(8\d\d|9\d\d|10[0-3]\d)px/);
   });
+
+  it("honors reduced-motion and forced-colors accessibility preferences", () => {
+    // Item 9: jsdom cannot evaluate these media queries, so guard that the app
+    // ships the accommodations at all.
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)/);
+    expect(css).toMatch(/@media \(forced-colors: active\)/);
+  });
 });
