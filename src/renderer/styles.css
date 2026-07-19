@@ -7,14 +7,16 @@
   font-variant-numeric: tabular-nums;
 
   /* Monochrome instrument: a graphite canvas, crisp white panels, hairline
-     rules, and a single signal-green accent used only on the primary action,
-     the meter fill, active nav, and focus. Warn/error stay low-chroma. */
+     rules. Colour rides two orthogonal axes that never share an element:
+       AXIS 1 WHO  — provider identity (coral vs ink), hue + shape.
+       AXIS 2 HEALTH — quota runway (green -> amber -> brick), sequential fill.
+     --accent stays the single green "go/primary action" signal. */
   --bg: #f4f5f6;
   --paper: #ffffff;
   --panel: #f8f9fa;
   --ink: #17191c;
   --ink-2: #3c4247;
-  --muted: #666d73;
+  --muted: #676c76;
   --faint: #949aa0;
   --line: #e4e6e8;
   --line-2: #d5d8db;
@@ -23,9 +25,30 @@
   --accent-strong: #0f6a48;
   --accent-soft: #e9f2ee;
 
-  --warn: #94651c;
+  /* AXIS 1 — provider identity. The saturated hue is graphic-only and lives on
+     WHITE (glyph tile / card edge); the -ink variants are the AA-safe text
+     values (coral #d97757 fails AA as text, so text uses #b45033). */
+  --provider-claude: #d97757;
+  --provider-claude-ink: #b45033;
+  --provider-codex: #1a1a1a;
+  --provider-codex-ink: #1a1a1a;
+
+  /* AXIS 2 — quota health. The base tokens are the VIVID fills (gauge / meter /
+     dot); the -soft tokens are dot halos; the -ink tokens are AA-safe text. */
+  --health-safe: #17835a;
+  --health-safe-soft: #e9f2ee;
+  --health-safe-ink: #157c55;
+  --health-low: #b0761a;
+  --health-low-soft: #f2ecdd;
+  --health-low-ink: #956210;
+  --health-crit: #c0453b;
+  --health-crit-soft: #f4e3dd;
+
+  /* --warn/--error now back TEXT roles only (tags, pills, form/toast errors),
+     so they hold the AA-safe hues; the vivid fills moved to --health-*. */
+  --warn: #956210;
   --warn-soft: #f2ecdd;
-  --error: #af4f39;
+  --error: #c0453b;
   --error-soft: #f4e3dd;
 
   --radius: 12px;
@@ -434,7 +457,7 @@ button:focus-visible {
   background: var(--line-2);
 }
 .readiness-seg.on {
-  background: var(--accent);
+  background: var(--health-safe);
 }
 .summary-divider {
   width: 1px;
@@ -588,6 +611,22 @@ button:focus-visible {
 }
 
 /* ---- Account card ---- */
+/* 2px provider top-edge (AXIS 1 WHO). A pseudo-element keeps the four-side
+   hairline and rounded corners intact where a border-top would flatten them. */
+.account-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--line);
+}
+.account-card.accent-warm::before {
+  background: var(--provider-claude);
+}
+.account-card.accent-cool::before {
+  background: var(--provider-codex);
+}
 .account-card {
   position: relative;
   min-height: 264px;
@@ -616,16 +655,25 @@ button:focus-visible {
   display: grid;
   place-items: center;
   border-radius: 10px;
-  color: #5c554d;
-  background: #edeae6;
-  font: 700 16px var(--display);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  color: var(--ink);
 }
-/* Providers stay distinct with only a warm-vs-cool grey, no competing hues.
-   Claude uses the default warm .provider-mark; Codex overrides to the cool grey. */
-.accent-cool .provider-mark,
+.provider-mark svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+/* Provider hue lives ONLY in the glyph (currentColor) on its white tile — never
+   a filled colour swatch. Coral clears the 3:1 graphic bar on white; the two
+   silhouettes differ in shape so identity survives forced-colors/colourblind. */
+.account-card.accent-warm .provider-mark,
+.provider-mark.accent-warm {
+  color: var(--provider-claude);
+}
+.account-card.accent-cool .provider-mark,
 .provider-mark.accent-cool {
-  background: #e6ebe9;
-  color: #46524d;
+  color: var(--provider-codex);
 }
 .provider-identity-text {
   min-width: 0;
@@ -731,16 +779,16 @@ button:focus-visible {
   box-shadow: 0 0 0 3px #eef0f1;
 }
 .provider-live-dot.tone-ok {
-  background: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  background: var(--health-safe);
+  box-shadow: 0 0 0 3px var(--health-safe-soft);
 }
 .provider-live-dot.tone-warn {
-  background: var(--warn);
-  box-shadow: 0 0 0 3px var(--warn-soft);
+  background: var(--health-low);
+  box-shadow: 0 0 0 3px var(--health-low-soft);
 }
 .provider-live-dot.tone-error {
-  background: var(--error);
-  box-shadow: 0 0 0 3px var(--error-soft);
+  background: var(--health-crit);
+  box-shadow: 0 0 0 3px var(--health-crit-soft);
 }
 
 /* Identity: one line, the masked account and its pre-launch verify state. */
@@ -838,14 +886,14 @@ button:focus-visible {
   stroke: #eaecee;
 }
 .gauge-fill {
-  stroke: var(--accent);
+  stroke: var(--health-safe);
   transition: stroke-dasharray 0.55s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .gauge-fill-low {
-  stroke: var(--warn);
+  stroke: var(--health-low);
 }
 .gauge-fill-crit {
-  stroke: var(--error);
+  stroke: var(--health-crit);
 }
 .gauge-readout {
   position: absolute;
@@ -1083,7 +1131,10 @@ button:focus-visible {
   width: 31px;
   height: 31px;
   border-radius: 8px;
-  font-size: 13px;
+}
+.provider-mark.small svg {
+  width: 16px;
+  height: 16px;
 }
 .switcher-copy {
   display: grid;
@@ -1310,7 +1361,9 @@ button:focus-visible {
   font-size: 12px;
   font-weight: 600;
 }
-.provider-choice button svg {
+/* Only the selected-state check icon (a direct child) gets pushed right and
+   tinted accent-green; the nested provider glyph keeps its identity hue. */
+.provider-choice button > svg {
   margin-left: auto;
   color: var(--accent);
 }
@@ -1606,6 +1659,12 @@ button:focus-visible {
   .summary-card,
   .switcher-item {
     border: 1px solid CanvasText;
+  }
+  /* Provider identity survives High Contrast on shape (glyph) + a system edge. */
+  .account-card::before,
+  .account-card.accent-warm::before,
+  .account-card.accent-cool::before {
+    background: CanvasText;
   }
   .gauge-track {
     stroke: GrayText;

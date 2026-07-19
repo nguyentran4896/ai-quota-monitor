@@ -34,13 +34,56 @@ import {
 } from "./account-preferences";
 import { demoDashboard } from "./demo-data";
 
-const providerMeta: Record<
-  ProviderId,
-  { mark: string; label: string; accent: string }
-> = {
-  claude: { mark: "A", label: "Claude", accent: "warm" },
-  codex: { mark: "O", label: "Codex", accent: "cool" },
+const providerMeta: Record<ProviderId, { label: string; accent: string }> = {
+  claude: { label: "Claude", accent: "warm" },
+  codex: { label: "Codex", accent: "cool" },
 };
+
+// Provider identity glyphs (AXIS 1 "who"): original geometric marks, not the
+// trademarked Anthropic/OpenAI logos. Claude = a radial spark; Codex = an
+// interlaced hex blossom. Drawn with currentColor so the accent-* class sets
+// the hue (coral for Claude, ink for Codex). aria-hidden: the account name and
+// aria-labels already announce the provider, so the mark is decorative.
+function ProviderGlyph({ provider }: { provider: ProviderId }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      {provider === "claude" ? (
+        <>
+          <circle cx="12" cy="12" r="2.3" fill="currentColor" />
+          <path fill="currentColor" d="M12 2 L13.25 9.2 L10.75 9.2 Z" />
+          <path fill="currentColor" d="M22 12 L14.8 13.25 L14.8 10.75 Z" />
+          <path fill="currentColor" d="M12 22 L10.75 14.8 L13.25 14.8 Z" />
+          <path fill="currentColor" d="M2 12 L9.2 10.75 L9.2 13.25 Z" />
+          <path
+            fill="currentColor"
+            d="M16.81 7.19 L14.69 10.73 L13.27 9.31 Z"
+          />
+          <path
+            fill="currentColor"
+            d="M16.81 16.81 L13.27 14.69 L14.69 13.27 Z"
+          />
+          <path
+            fill="currentColor"
+            d="M7.19 16.81 L9.31 13.27 L10.73 14.69 Z"
+          />
+          <path fill="currentColor" d="M7.19 7.19 L10.73 9.31 L9.31 10.73 Z" />
+        </>
+      ) : (
+        <g
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        >
+          <path d="M12 3 L19.79 7.5 L19.79 16.5 L12 21 L4.21 16.5 L4.21 7.5 Z" />
+          <path d="M18 12 L15 6.8 L9 6.8 L6 12 L9 17.2 L15 17.2 Z" />
+          <path d="M18 12 L19.79 12 M15 6.8 L15.9 5.25 M9 6.8 L8.1 5.25 M6 12 L4.21 12 M9 17.2 L8.1 18.75 M15 17.2 L15.9 18.75" />
+        </g>
+      )}
+    </svg>
+  );
+}
 
 function titleCase(value: string | null): string {
   if (!value) return "Plan unknown";
@@ -372,7 +415,9 @@ function AccountCard({
     >
       <div className="account-card-top">
         <div className="provider-identity">
-          <span className="provider-mark">{meta.mark}</span>
+          <span className="provider-mark">
+            <ProviderGlyph provider={account.provider} />
+          </span>
           <div className="provider-identity-text">
             <h3>{account.displayName}</h3>
             {ambiguous && (
@@ -622,7 +667,7 @@ function SmartSwitcher({
               tabIndex={isSelected ? 0 : -1}
             >
               <span className={`provider-mark small accent-${meta.accent}`}>
-                {meta.mark}
+                <ProviderGlyph provider={account.provider} />
               </span>
               <span className="switcher-copy">
                 <strong>{account.displayName}</strong>
@@ -749,7 +794,7 @@ function AddProfileDialog({
                   <span
                     className={`provider-mark small accent-${providerMeta[value].accent}`}
                   >
-                    {providerMeta[value].mark}
+                    <ProviderGlyph provider={value} />
                   </span>
                   {providerMeta[value].label}
                   {provider === value && <Check size={14} />}
