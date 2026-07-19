@@ -23,6 +23,10 @@ const bridge: QuotaMonitorBridge = Object.freeze({
     ipcRenderer.invoke("settings:choose-cli", provider),
   resetCliExecutable: (provider: ProviderId) =>
     ipcRenderer.invoke("settings:reset-cli", provider),
+  recheckCliExecutable: (provider: ProviderId) =>
+    ipcRenderer.invoke("settings:recheck-cli", provider),
+  openCliInstallInstructions: (provider: ProviderId) =>
+    ipcRenderer.invoke("settings:open-install", provider),
   setAlertThreshold: (threshold: AlertThreshold) =>
     ipcRenderer.invoke("settings:set-alert-threshold", threshold),
   openProviderUsage: (provider: ProviderId) =>

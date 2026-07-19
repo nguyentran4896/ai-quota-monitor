@@ -47,6 +47,17 @@ export interface ProviderCapability {
 
 export type ProviderCapabilities = Record<ProviderId, ProviderCapability>;
 
+// Short, platform-aware setup guidance for a provider CLI. Static per provider;
+// carried on the CLI status so the renderer can display it without a raw
+// command output or filesystem path ever reaching it.
+export interface ProviderInstallGuidance {
+  headline: string;
+  windowsCommand: string;
+  signIn: string;
+  verify: string;
+  note: string | null;
+}
+
 export interface ProviderCliStatus {
   provider: ProviderId;
   source: ProviderCommandSource;
@@ -54,6 +65,7 @@ export interface ProviderCliStatus {
   compatible: boolean;
   version: string | null;
   message: string;
+  installGuidance: ProviderInstallGuidance;
 }
 
 export interface QuotaWindow {
@@ -123,6 +135,10 @@ export interface QuotaMonitorBridge {
   launchProfile(profileId: string): Promise<ProfileActionResult>;
   chooseCliExecutable(provider: ProviderId): Promise<ProfileActionResult>;
   resetCliExecutable(provider: ProviderId): Promise<ProfileActionResult>;
+  recheckCliExecutable(provider: ProviderId): Promise<ProfileActionResult>;
+  openCliInstallInstructions(
+    provider: ProviderId,
+  ): Promise<ProfileActionResult>;
   setAlertThreshold(threshold: AlertThreshold): Promise<ProfileActionResult>;
   openProviderUsage(provider: ProviderId): Promise<ProfileActionResult>;
   openEvidence(): Promise<ProfileActionResult>;

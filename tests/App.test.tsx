@@ -71,6 +71,8 @@ describe("App", () => {
       launchProfile: vi.fn(),
       chooseCliExecutable: vi.fn(),
       resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
       setAlertThreshold: vi.fn(),
       openProviderUsage: vi.fn(),
       openEvidence: vi.fn(),
@@ -113,6 +115,8 @@ describe("App", () => {
       launchProfile: vi.fn(),
       chooseCliExecutable: vi.fn(),
       resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
       setAlertThreshold: vi.fn(),
       openProviderUsage: vi.fn(),
       openEvidence: vi.fn(),
@@ -147,6 +151,75 @@ describe("App", () => {
         name: "Local quota alert threshold",
       }),
     ).toHaveValue("off");
+  });
+
+  it("shows Windows setup guidance and re-check/install actions when a CLI is missing", async () => {
+    const missingCodex = {
+      ...demoDashboard,
+      mode: "live" as const,
+      cliStatus: {
+        ...demoDashboard.cliStatus,
+        codex: {
+          ...demoDashboard.cliStatus.codex,
+          callable: false,
+          compatible: false,
+          version: null,
+          message:
+            "Codex is not callable. Install its official standalone CLI or choose its executable in Settings.",
+        },
+      },
+    };
+    const recheckCliExecutable = vi.fn().mockResolvedValue({
+      ok: false,
+      message: "Codex is not callable.",
+    });
+    const openCliInstallInstructions = vi.fn().mockResolvedValue({
+      ok: true,
+      message: "Codex install instructions opened in your browser.",
+    });
+    window.quotaMonitor = {
+      getDashboard: vi.fn().mockResolvedValue(missingCodex),
+      refresh: vi.fn().mockResolvedValue(missingCodex),
+      addProfile: vi.fn(),
+      removeProfile: vi.fn(),
+      renameProfile: vi.fn(),
+      beginLogin: vi.fn(),
+      launchProfile: vi.fn(),
+      chooseCliExecutable: vi.fn(),
+      resetCliExecutable: vi.fn(),
+      recheckCliExecutable,
+      openCliInstallInstructions,
+      setAlertThreshold: vi.fn(),
+      openProviderUsage: vi.fn(),
+      openEvidence: vi.fn(),
+    };
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Your AI runway,");
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+
+    const dialog = screen.getByRole("dialog", { name: "CLI settings" });
+    // The install command and the Store-app caveat come from the official docs.
+    expect(
+      within(dialog).getByText("npm install -g @openai/codex"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        /Microsoft Store listing are not the Codex CLI/i,
+      ),
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Re-check Codex" }),
+    );
+    expect(recheckCliExecutable).toHaveBeenCalledWith("codex");
+
+    await user.click(
+      within(dialog).getByRole("button", {
+        name: "Open Codex install instructions",
+      }),
+    );
+    expect(openCliInstallInstructions).toHaveBeenCalledWith("codex");
   });
 
   it("supports Escape dismissal and returns focus to the dialog trigger", async () => {
@@ -199,6 +272,8 @@ describe("App", () => {
       launchProfile: vi.fn(),
       chooseCliExecutable: vi.fn(),
       resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
       setAlertThreshold: vi.fn(),
       openProviderUsage: vi.fn(),
       openEvidence: vi.fn(),
@@ -243,6 +318,8 @@ describe("App", () => {
       launchProfile,
       chooseCliExecutable: vi.fn(),
       resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
       setAlertThreshold: vi.fn(),
       openProviderUsage: vi.fn(),
       openEvidence: vi.fn(),
@@ -290,6 +367,8 @@ describe("App", () => {
       launchProfile,
       chooseCliExecutable: vi.fn(),
       resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
       setAlertThreshold: vi.fn(),
       openProviderUsage: vi.fn(),
       openEvidence: vi.fn(),
@@ -338,6 +417,8 @@ describe("App", () => {
       launchProfile: vi.fn(),
       chooseCliExecutable: vi.fn(),
       resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
       setAlertThreshold: vi.fn(),
       openProviderUsage: vi.fn(),
       openEvidence: vi.fn(),
@@ -383,6 +464,8 @@ describe("App", () => {
       launchProfile: vi.fn(),
       chooseCliExecutable: vi.fn(),
       resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
       setAlertThreshold: vi.fn(),
       openProviderUsage: vi.fn(),
       openEvidence: vi.fn(),
@@ -426,6 +509,8 @@ describe("App", () => {
         .mockResolvedValue({ ok: true, message: "Launched Codex Work." }),
       chooseCliExecutable: vi.fn(),
       resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
       setAlertThreshold: vi.fn(),
       openProviderUsage: vi.fn(),
       openEvidence: vi.fn(),
@@ -463,6 +548,8 @@ describe("App", () => {
       launchProfile: vi.fn(),
       chooseCliExecutable: vi.fn(),
       resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
       setAlertThreshold,
       openProviderUsage: vi.fn(),
       openEvidence: vi.fn(),
@@ -508,6 +595,8 @@ describe("App", () => {
       launchProfile: vi.fn(),
       chooseCliExecutable: vi.fn(),
       resetCliExecutable: vi.fn(),
+      recheckCliExecutable: vi.fn(),
+      openCliInstallInstructions: vi.fn(),
       setAlertThreshold: vi.fn(),
       openProviderUsage: vi.fn(),
       openEvidence: vi.fn(),

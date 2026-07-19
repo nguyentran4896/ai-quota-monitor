@@ -836,6 +836,38 @@ function CliSettingsDialog({
     }
   };
 
+  const recheckCommand = async (provider: ProviderId) => {
+    const bridge = window.quotaMonitor;
+    if (!bridge) {
+      setMessage("CLI detection is available in the desktop app.");
+      return;
+    }
+    setBusyProvider(provider);
+    try {
+      const result = await bridge.recheckCliExecutable(provider);
+      setMessage(result.message);
+      await onChanged();
+    } catch {
+      setMessage("QuotaDeck could not re-check the CLI. Try again.");
+    } finally {
+      setBusyProvider(null);
+    }
+  };
+
+  const openInstall = async (provider: ProviderId) => {
+    const bridge = window.quotaMonitor;
+    if (!bridge) {
+      setMessage("Install instructions are available in the desktop app.");
+      return;
+    }
+    try {
+      const result = await bridge.openCliInstallInstructions(provider);
+      setMessage(result.message);
+    } catch {
+      setMessage("QuotaDeck could not open the install instructions.");
+    }
+  };
+
   const changeAlertThreshold = async (value: string) => {
     const bridge = window.quotaMonitor;
     const next: AlertThreshold =
@@ -895,18 +927,14 @@ function CliSettingsDialog({
           {(["claude", "codex"] as const).map((provider) => {
             const status = dashboard.cliStatus[provider];
             const name = provider === "claude" ? "Claude Code" : "Codex";
+            const ready = status.callable && status.compatible;
+            const guidance = status.installGuidance;
             return (
               <article className="cli-status-card" key={provider}>
                 <div>
                   <strong>{name}</strong>
-                  <span
-                    className={
-                      status.callable && status.compatible
-                        ? "cli-ready"
-                        : "cli-missing"
-                    }
-                  >
-                    {status.callable && status.compatible
+                  <span className={ready ? "cli-ready" : "cli-missing"}>
+                    {ready
                       ? "Ready"
                       : status.callable
                         ? "Update needed"
@@ -919,6 +947,28 @@ function CliSettingsDialog({
                     ? "Selected executable"
                     : "Application PATH"}
                 </small>
+                {!ready && (
+                  // Setup guidance is grounded in the providers' official docs
+                  // and only appears when the CLI is missing or incompatible.
+                  <div className="cli-setup-guide">
+                    <p className="cli-setup-headline">{guidance.headline}</p>
+                    <dl className="cli-setup-steps">
+                      <dt>Install (Windows)</dt>
+                      <dd>
+                        <code>{guidance.windowsCommand}</code>
+                      </dd>
+                      <dt>Sign in</dt>
+                      <dd>{guidance.signIn}</dd>
+                      <dt>Verify</dt>
+                      <dd>
+                        <code>{guidance.verify}</code>
+                      </dd>
+                    </dl>
+                    {guidance.note && (
+                      <p className="cli-setup-note">{guidance.note}</p>
+                    )}
+                  </div>
+                )}
                 <div className="cli-status-actions">
                   <button
                     type="button"
@@ -928,6 +978,23 @@ function CliSettingsDialog({
                     aria-label={`Choose ${name} executable`}
                   >
                     Choose executable
+                  </button>
+                  <button
+                    type="button"
+                    className="text-action"
+                    disabled={busyProvider !== null}
+                    onClick={() => void recheckCommand(provider)}
+                    aria-label={`Re-check ${name}`}
+                  >
+                    {busyProvider === provider ? "Checking…" : "Recheck"}
+                  </button>
+                  <button
+                    type="button"
+                    className="text-action"
+                    onClick={() => void openInstall(provider)}
+                    aria-label={`Open ${name} install instructions`}
+                  >
+                    Install guide
                   </button>
                   {status.source === "custom" && (
                     <button

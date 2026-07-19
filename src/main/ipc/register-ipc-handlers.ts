@@ -1,4 +1,5 @@
 import { lstat } from "node:fs/promises";
+import path from "node:path";
 import {
   dialog,
   ipcMain,
@@ -21,6 +22,7 @@ import {
 import type { ProfileStore } from "../profiles/profile-store";
 import type { CodexMonitorManager } from "../providers/codex-app-server";
 import { stopProviderSnapshotMonitoring } from "../providers/provider-adapters";
+import { providerInstallUrl } from "../providers/provider-install";
 import { providerUsageUrl } from "../providers/provider-usage";
 import { createAsyncRequestCoalescer } from "../services/concurrency";
 import {
@@ -295,6 +297,19 @@ export function registerIpcHandlers({
     const selection = await dialog.showOpenDialog(getMainWindow(), {
       title: `Choose the ${providerName(provider)} executable`,
       properties: ["openFile"],
+      // On Windows the CLI ships as an .exe or an npm/pnpm .cmd/.bat/.ps1 shim.
+      // Offer those first, but keep "All files" so a shim without an extension
+      // (or a non-Windows host) is still selectable.
+      filters:
+        process.platform === "win32"
+          ? [
+              {
+                name: "Executables and shims",
+                extensions: ["exe", "cmd", "bat", "ps1"],
+              },
+              { name: "All files", extensions: ["*"] },
+            ]
+          : undefined,
     });
     const executable = selection.filePaths[0];
     if (selection.canceled || !executable) {
@@ -325,6 +340,51 @@ export function registerIpcHandlers({
       message: `${providerName(provider)} will be discovered from the application PATH.`,
     };
   });
+  ipcMain.handle(
+    "settings:recheck-cli",
+    async (event, provider: ProviderId) => {
+      assertTrustedSender(event);
+      if (!isProvider(provider)) {
+        return { ok: false, message: "Unsupported provider." };
+      }
+      const commands = await cliSettingsStore.getCommands();
+      const command = commands[provider];
+      const status = await probeProviderCommand(
+        provider,
+        command,
+        path.isAbsolute(command) ? "custom" : "path",
+      );
+      // Force the next dashboard read to re-probe rather than reuse a cached
+      // result, so the card the user is looking at reflects this re-check.
+      dashboardRequests.invalidate();
+      // status.message is already a curated sentence — never raw command output.
+      return {
+        ok: status.callable && status.compatible,
+        message: status.message,
+      };
+    },
+  );
+  ipcMain.handle(
+    "settings:open-install",
+    async (event, provider: ProviderId) => {
+      assertTrustedSender(event);
+      if (!isProvider(provider)) {
+        return { ok: false, message: "Unsupported provider." };
+      }
+      try {
+        await shell.openExternal(providerInstallUrl(provider));
+        return {
+          ok: true,
+          message: `${providerName(provider)} install instructions opened in your browser.`,
+        };
+      } catch {
+        return {
+          ok: false,
+          message: `${providerName(provider)} install instructions could not be opened.`,
+        };
+      }
+    },
+  );
   ipcMain.handle(
     "settings:set-alert-threshold",
     async (event, threshold: AlertThreshold) => {
