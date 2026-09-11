@@ -75,7 +75,7 @@
     "electron-builder": "^26.15.3",
     "jsdom": "^29.1.1",
     "prettier": "^3.9.5",
-    "sharp": "^0.35.3",
+    "sharp": "^0.35.4",
     "tsup": "^8.5.0",
     "typescript": "^7.0.2",
     "vite": "^8.1.5",
